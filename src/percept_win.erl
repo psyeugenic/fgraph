@@ -19,55 +19,26 @@
 -module(percept_win).
 
 -export([
-	
-         stop/2
+	new/2,
+	stop/2
         ]).
 
 -include_lib("wx/include/wx.hrl").
 
--record(state,
-        {
+-record(state, {
           parent_pid,
           frame,
           window,
           width,
           height,
-          ticker
-         }).
-
--record(graph,
-        {
           pen,
           brush,
           font,
-          select = none,
-          offset = {0,0},
-          offset_state = false,
-          ke = 0,
-          vs = [],
-          es = [],
-	  wheel = [],
-	  events
+          ticker
          }).
 
 -define(BRD,10).
 -define(ARC_R, 10).
-
--define(reset, 80).
--define(lock, 81).
--define(unlock, 82).
--define(move, 83).
--define(select, 84).
--define(delete, 85).
--define(freeze, 86).
-
--define(q_slider, 90).
--define(l_slider, 91).
--define(k_slider, 92).
-
--define(default_q, 20).
--define(default_l, 20).
--define(default_k, 20).
 
 -define(color_bg, {45,50,95}).
 -define(color_fg, {235,245,230}).
@@ -76,19 +47,6 @@
 -define(color_alternate, {220,10,20}).
 -define(color_alternate_bg, {230,20,30}).
 
-add_node(Pid, Key) -> add_node(Pid, Key, default).
-add_node(Pid, Key, Color) -> add_node(Pid, Key, Color, Key).
-add_node(Pid, Key, Color, Name) -> Pid ! {add_node, Key, Color, Name}.
-del_node(Pid, Key) -> Pid ! {del_node, Key}.
-change_node(Pid, Key, Color) ->  Pid ! {change_node, Key, Color}.
-
-add_event(Pid, Keys) -> Pid ! {add_event, Keys}.
-
-add_link(Pid, Keys) -> add_link(Pid, Keys, default).
-del_link(Pid, Keys) -> add_link(Pid, Keys, default).
-
-add_link(Pid, {FromKey, ToKey}, Wheel) -> Pid ! {add_link, {FromKey, ToKey}, Wheel}.
-del_link(Pid, {FromKey, ToKey}, Wheel) -> Pid ! {del_link, {FromKey, ToKey}, Wheel}.
 
 stop(Pid, Reason) -> 
     Ref = erlang:monitor(process, Pid),
@@ -98,8 +56,6 @@ stop(Pid, Reason) ->
             ok
     end.
 
-set_dbl_click(Pid, Fun) -> Pid ! {set_dbl_click, Fun}.
-
 new(Parent, Options) ->
     Env = wx:get_env(),
     Me  = self(),
@@ -108,58 +64,9 @@ new(Parent, Options) ->
     
 init([ParentWin, Pid, Env, Options]) ->
     wx:set_env(Env),
-    
-    BReset  = wxButton:new(ParentWin, ?reset,  [{label,"Reset"}]),
-    BFreeze = wxButton:new(ParentWin, ?freeze, [{label,"Freeze"}]),
-    BLock   = wxButton:new(ParentWin, ?lock,   [{label,"Lock"}]),
-    BUnlock = wxButton:new(ParentWin, ?unlock, [{label,"Unlock"}]),
-    BDelete = wxButton:new(ParentWin, ?delete, [{label,"Delete"}]),
 
-    SQ  = wxSlider:new(ParentWin, ?q_slider, ?default_q, 1, 500, [{style, ?wxVERTICAL}]),
-    SL  = wxSlider:new(ParentWin, ?l_slider, ?default_l, 1, 500, [{style, ?wxVERTICAL}]),
-    SK  = wxSlider:new(ParentWin, ?k_slider, ?default_k, 1, 500, [{style, ?wxVERTICAL}]),
     Win = wxWindow:new(ParentWin, ?wxID_ANY, Options),
     
-    ButtonSizer = wxBoxSizer:new(?wxVERTICAL),
-    wxSizer:add(ButtonSizer, BReset),
-    wxSizer:add(ButtonSizer, BFreeze),
-    wxSizer:add(ButtonSizer, BLock),
-    wxSizer:add(ButtonSizer, BUnlock),
-    wxSizer:add(ButtonSizer, BDelete),
-
-    SliderSizer = wxBoxSizer:new(?wxHORIZONTAL),
-    wxSizer:add(SliderSizer, SQ, [{flag, ?wxEXPAND}, {proportion, 1}]),
-    wxSizer:add(SliderSizer, SL, [{flag, ?wxEXPAND}, {proportion, 1}]),
-    wxSizer:add(SliderSizer, SK, [{flag, ?wxEXPAND}, {proportion, 1}]),
-    wxSizer:add(ButtonSizer, SliderSizer, [{flag, ?wxEXPAND}, {proportion, 1}]),
-
-    WindowSizer = wxBoxSizer:new(?wxHORIZONTAL),
-    wxSizer:add(WindowSizer, ButtonSizer, [{flag, ?wxEXPAND}, {proportion, 0}]),
-    wxSizer:add(WindowSizer, Win, [{flag, ?wxEXPAND}, {proportion, 1}]),
-    
-    wxButton:setToolTip(BReset, "Remove selection and unlock all nodes."),
-    wxButton:setToolTip(BFreeze, "Start/stop redraw of screen."),
-    wxButton:setToolTip(BLock, "Lock all selected nodes."),
-    wxButton:setToolTip(BUnlock, "Unlock all selected nodes."),
-    wxButton:setToolTip(BDelete, "Delete all selected nodes."),
-
-    wxButton:setToolTip(SQ, "Control repulsive force. This can also be controlled with the mouse wheel on the canvas."),
-    wxButton:setToolTip(SL, "Control link length."),
-    wxButton:setToolTip(SK, "Control attractive force. Use with care."),
-    wxButton:setToolTip(Win, 
-			"Drag mouse while left mouse button is pressed to perform various operations. "
-			"Combine with control key to select. Combine with shift key to lock single node."),
-
-    wxButton:connect(BReset,  command_button_clicked),
-    wxButton:connect(BFreeze, command_button_clicked),
-    wxButton:connect(BLock,   command_button_clicked),
-    wxButton:connect(BUnlock, command_button_clicked),
-    wxButton:connect(BDelete, command_button_clicked),
- 
-    wxWindow:connect(SQ, command_slider_updated),
-    wxWindow:connect(SL, command_slider_updated),
-    wxWindow:connect(SK, command_slider_updated),
-   
     wxWindow:connect(Win, enter_window),        
     wxWindow:connect(Win, move),
     wxWindow:connect(Win, motion),
@@ -168,37 +75,109 @@ init([ParentWin, Pid, Env, Options]) ->
     wxWindow:connect(Win, left_down),
     wxWindow:connect(Win, left_up),
     wxWindow:connect(Win, right_down),
-    wxWindow:connect(Win, paint,  [{skip, true}]),
+    %%wxWindow:connect(Win, paint,  [{skip, true}]),
+    %% wxWindow:connect(Win, paint,  [{callback, fun(_,_) -> ok end}]),
     
     Pen   = wxPen:new({0,0,0}, [{width, 3}]),
     Font  = wxFont:new(12, ?wxSWISS, ?wxNORMAL, ?wxNORMAL,[]),
     Brush = wxBrush:new({0,0,0}),
+    
+    WindowSizer = wxBoxSizer:new(?wxHORIZONTAL),
+    wxSizer:add(WindowSizer, Win, [{flag, ?wxEXPAND}, {proportion, 1}]),
 
     Pid ! {self(), {?MODULE, WindowSizer}},
 
     wxWindow:setFocus(Win), %% Get keyboard focus
   
-    Vs = fgraph:new(),
-    Es = fgraph:new(),
-
     Me = self(),
+
     Ticker = spawn_link(fun() -> ticker_init(Me) end),
     
     loop( #state{ parent_pid = Pid,
-                  q_slider = SQ,
-		  l_slider = SL,
-		  k_slider = SK,
-                  mouse_act = ?move,
 		  frame = ParentWin,
 		  window = Win,
-                  is_frozen = false,
-		  ticker = Ticker},
-          #graph{ vs = Vs,
-		  es = Es,
-
+		  ticker = Ticker,
 		  pen = Pen,
 		  font = Font,
-		  events = gb_trees:empty(),
 		  brush = Brush}).
 
 
+
+ticker_init(Pid) ->
+    ticker_loop(Pid, 50).
+ticker_loop(Pid, Time) ->
+    receive after Time ->
+        Pid ! {self(), redraw},
+        T0 = now(),
+        receive {Pid, ok} -> ok end,
+        T1 = now(),
+        D = timer:now_diff(T1, T0)/1000,
+        case round(40 - D) of
+            Ms when Ms < 0 -> ticker_loop(Pid, 0);
+            Ms -> ticker_loop(Pid, Ms)
+        end
+    end.
+
+
+loop(S) ->
+    receive
+
+        {Req, redraw} ->
+            Req ! {self(), ok},
+            redraw(S),
+            loop(S);
+
+        {stop, Reason} ->
+	    unlink(S#state.parent_pid),
+	    exit(Reason);
+
+
+        Other ->
+            %error_logger:format("~p~p got unexpected message:\n\t~p\n", [?MODULE, self(), Other]),          
+            loop(S)
+    end.
+
+redraw(#state{window=Win} = S) ->
+    DC0  = wxClientDC:new(Win),
+    DC   = wxBufferedDC:new(DC0),
+    Size = wxWindow:getSize(Win),
+    redraw(DC, Size, S),
+    wxBufferedDC:destroy(DC),
+    wxClientDC:destroy(DC0),
+    ok.
+
+redraw(DC, Size, S) ->    
+    wx:batch(fun() -> 
+        Pen   = S#state.pen,
+        Font  = S#state.font,
+        Brush = S#state.brush,
+        wxDC:setTextForeground(DC,?color_fg),
+        wxBrush:setColour(Brush, ?color_bg),
+        wxDC:setBrush(DC, Brush),
+        wxDC:setBackground(DC, Brush),
+        wxDC:clear(DC),
+
+	wxPen:setColour(Pen, {20,200, 200}),
+        wxPen:setWidth(Pen, 1),
+        wxDC:setPen(DC,Pen),
+
+	draw_x(DC, Size),
+        ok
+    end).
+
+
+draw_x(DC, {Sx, Sy}) ->
+    X1 = 10,
+    X2 = Sx - 10,
+    Y1 = 10,
+    Y2 = Sy - 10,
+
+    draw_line(DC, {X1, Y1}, {X2, Y1}),
+    draw_line(DC, {X2, Y1}, {X2, Y2}),
+    draw_line(DC, {X2, Y2}, {X1, Y2}),
+    draw_line(DC, {X1, Y2}, {X1, Y1}),
+    ok.
+
+draw_line(DC, P0, P1) -> draw_line(DC, P0, P1, {0,0}).
+draw_line(DC, {X0,Y0}, {X1, Y1}, {X, Y}) ->
+    wxDC:drawLine(DC, {round(X0 + X), round(Y0 + Y)}, {round(X1 + X), round(Y1 + Y)}).

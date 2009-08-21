@@ -10,6 +10,7 @@
 	height, 
 	tracer 
 	}).  
+
 -record(tstate,{
 	n = 1,
 	registry,
@@ -26,13 +27,14 @@
 -define(file_disconnect, 102).
 -define(view_links, 103).
 -define(view_ancestry, 104).
+-define(file_cookie, 105).
 
 start() ->
     spawn(fun() -> init() end).
 
 init() ->
-    Wt = 1600,
-    Ht = 1024,
+    Wt = 1020,
+    Ht = 800,
     Wx = wx:new(),
     Frame = wxFrame:new(Wx, -1, "Processes", []),
 
@@ -42,6 +44,7 @@ init() ->
     MainSz = wxBoxSizer:new(?wxVERTICAL),
     Panel  = wxPanel:new(Frame),
     {Pid,Win} = fgraph_win:new(Panel, []),
+    {Pid2,Win2} = percept_win:new(Panel, []),
     
     %% Menues
     MenuBar = wxMenuBar:new(),
@@ -50,6 +53,7 @@ init() ->
     wxMenu:append(File, ?file_connect, "&Connect"),
     wxMenu:append(File, ?file_disconnect,  "&Disconnect"),
     wxMenu:appendSeparator(File),
+    wxMenu:append(File, ?file_cookie, "&Set Cookie"),
     
     View    = wxMenu:new([]),
     wxMenu:append(View, ?view_links,  "&Links"),
@@ -64,7 +68,8 @@ init() ->
     SF = wxSizerFlags:new(),
     wxSizerFlags:proportion(SF,1),
  
-    wxSizer:add(MainSz, Win, wxSizerFlags:proportion(wxSizerFlags:expand(SF),1)),
+    wxSizer:add(MainSz, Win, wxSizerFlags:proportion(wxSizerFlags:expand(SF),3)),
+    wxSizer:add(MainSz, Win2, wxSizerFlags:proportion(wxSizerFlags:expand(SF),1)),
    
     wxWindow:setSizer(Panel, MainSz),
     wxSizer:fit(MainSz, Frame),
@@ -82,6 +87,27 @@ loop(S) ->
 	    loop(handle_msg(Msg, S))
     end.
 
+handle_msg(#wx{ id=?file_cookie, event = #wxCommand{type = command_menu_selected}, obj = Frame}, S) ->
+    TextDialog = wxTextEntryDialog:new(Frame, "Cookie: ", [{caption, "Set Cookie"}]),
+    wxDialog:showModal(TextDialog),
+
+    try
+    
+	case wxTextEntryDialog:getValue(TextDialog) of
+	    [] -> ok;
+	    CookieStr ->
+		Cookie = list_to_atom(CookieStr),
+		io:format("Set cookie: ~p ~p~n", [CookieStr, Cookie]),
+		erlang:set_cookie(node(), Cookie)
+	end
+    catch
+       C:E ->
+       	io:format("crap ~p:~p~n", [C,E])
+    end,
+
+    wxDialog:destroy(TextDialog),
+    S;
+
 handle_msg(#wx{ id=?file_connect, event = #wxCommand{type = command_menu_selected}, obj = Frame}, #state{ pid = Pid, tracer = undefined} = S) ->
     TextDialog = wxTextEntryDialog:new(Frame, "Node: ", [{caption, "Connect to Node"}]),
     wxDialog:showModal(TextDialog),
@@ -92,6 +118,7 @@ handle_msg(#wx{ id=?file_connect, event = #wxCommand{type = command_menu_selecte
 	NodeStr ->
 	    try
 		Node = list_to_atom(NodeStr),
+		pong = net_adm:ping(Node),
 
 		fgraph_win:set_click(Pid, fun
 		    (Key) -> 
@@ -115,8 +142,7 @@ handle_msg(#wx{ id=?file_disconnect, event = #wxCommand{type = command_menu_sele
     S#state{ tracer = undefined };
 
 handle_msg(#wx{ event = #wxClose{}}, S) ->
-    io:format("CLOSE~n"),
-    S;
+    erlang:halt();
 
 handle_msg(#wx{ id = ?view_links, event = #wxCommand{type = command_menu_selected}}, #state{ pid = Pid } = S) ->
     fgraph_win:set_links(Pid, link),
