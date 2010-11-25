@@ -20,10 +20,18 @@
 
 -export([
 	new/2,
-	stop/2
+	stop/2,
+
+	add/2
+
         ]).
 
 -include_lib("wx/include/wx.hrl").
+
+-record(rs, {
+	l = [],
+	n = 1
+	}).
 
 -record(state, {
           parent_pid,
@@ -34,6 +42,7 @@
           pen,
           brush,
           font,
+	  rs = #rs{},
           ticker
          }).
 
@@ -47,6 +56,8 @@
 -define(color_alternate, {220,10,20}).
 -define(color_alternate_bg, {230,20,30}).
 
+
+add(Pid, {Ts, State}) -> Pid ! {add, {Ts, State}}.
 
 stop(Pid, Reason) -> 
     Ref = erlang:monitor(process, Pid),
@@ -124,12 +135,16 @@ loop(S) ->
 
         {Req, redraw} ->
             Req ! {self(), ok},
-            redraw(S),
-            loop(S);
+	    {Out, Rs} = rs_do(S#state.rs),
+            redraw(S, Out),
+            loop(S#state{ rs = Rs});
 
         {stop, Reason} ->
 	    unlink(S#state.parent_pid),
 	    exit(Reason);
+
+	{add, What} ->
+	    loop(S#state{ rs = rs_add(What, S#state.rs)});
 
 
         Other ->
@@ -137,16 +152,34 @@ loop(S) ->
             loop(S)
     end.
 
-redraw(#state{window=Win} = S) ->
+%% runnability handling
+
+rs_add({Ts, active}, #rs{l = L, n = N} = Rs) ->
+    Rs#rs{ l = [{Ts, N + 1}|L], n = N + 1};
+rs_add({Ts, inactive}, #rs{l = L, n = N} = Rs) ->
+    Rs#rs{ l = [{Ts, N - 1}|L], n = N - 1}.
+
+rs_do(#rs{ l = L} = Rs) -> rs_do(L, [], [], now(), Rs).
+rs_do([], Lsr, Out, T1, Rs) -> {lists:reverse(Out), Rs};
+rs_do([{T0,N}|Ls], Lsr, Out, T1, Rs) ->
+    case timer:now_diff(T1, T0)/1000000 of
+    	T when T > 20 -> {lists:reverse([{20, N}|Out]), Rs#rs{ l = lists:reverse([{T0,N}|Lsr])}};
+	T -> rs_do(Ls, [{T0,N}|Lsr], [{T,N}|Out], T1, Rs)
+    end.
+
+
+
+
+redraw(#state{window=Win} = S, Lrs) ->
     DC0  = wxClientDC:new(Win),
-    DC   = wxBufferedDC:new(DC0),
+ %%   DC   = wxBufferedDC:new(DC0),
     Size = wxWindow:getSize(Win),
-    redraw(DC, Size, S),
-    wxBufferedDC:destroy(DC),
+    redraw(DC0, Size, S, Lrs),
+ %%   wxBufferedDC:destroy(DC),
     wxClientDC:destroy(DC0),
     ok.
 
-redraw(DC, Size, S) ->    
+redraw(DC, Size, S, Lrs) ->    
     wx:batch(fun() -> 
         Pen   = S#state.pen,
         Font  = S#state.font,
@@ -157,14 +190,33 @@ redraw(DC, Size, S) ->
         wxDC:setBackground(DC, Brush),
         wxDC:clear(DC),
 
-	wxPen:setColour(Pen, {20,200, 200}),
+	wxPen:setColour(Pen, {220,200, 200}),
         wxPen:setWidth(Pen, 1),
         wxDC:setPen(DC,Pen),
 
+	draw_rs(DC, Size, Lrs),
+	
+	wxPen:setColour(Pen, {20,200, 200}),
+        wxDC:setPen(DC,Pen),
+
 	draw_x(DC, Size),
+
         ok
     end).
 
+
+draw_rs(DC, {Sx, Sy}, Rs) -> draw_rs(DC, {Sx - 10, Sy - 10}, {0,0}, Rs).
+draw_rs(DC, _, _, []) -> ok;
+draw_rs(DC, Size, P0, [P1|Rs]) ->
+    draw_line(DC, xyc(P0, {10,10}, Size), xyc(P1, {10,10}, Size)),
+    draw_rs(DC, Size, P1, Rs).
+
+xyc({T, N}, {Sx, Sy}, {Ex, Ey}) ->
+    Lx = Ex - Sx,
+    
+    X = round(T/20*Lx + Sx),
+    Y = round(Ey - 5*N),
+    {X, Y}.
 
 draw_x(DC, {Sx, Sy}) ->
     X1 = 10,
@@ -174,7 +226,7 @@ draw_x(DC, {Sx, Sy}) ->
 
     draw_line(DC, {X1, Y1}, {X2, Y1}),
     draw_line(DC, {X2, Y1}, {X2, Y2}),
-    draw_line(DC, {X2, Y2}, {X1, Y2}),
+%    draw_line(DC, {X2, Y2}, {X1, Y2}),
     draw_line(DC, {X1, Y2}, {X1, Y1}),
     ok.
 

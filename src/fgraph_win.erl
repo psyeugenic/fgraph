@@ -475,7 +475,7 @@ loop(S, G) ->
             end;
 
         #wx{obj=_Win,event=#wxPaint{}} ->
-            redraw(S, G),
+            %%redraw(S, G),
             loop(S, G);
         #wx{obj=Win,event=#wxMouse{type=enter_window}} ->
             wxWindow:setFocus(Win), 

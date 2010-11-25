@@ -5,7 +5,8 @@
 -record(state,{
 	frame,
 	window, 
-	pid, 
+	pid,
+	rs,
 	width, 
 	height, 
 	tracer 
@@ -18,7 +19,8 @@
 	node,
 	client,
 	server,
-	graph}).
+	graph,
+	rs}).
 
 
 -include_lib("wx/include/wx.hrl").
@@ -78,7 +80,7 @@ init() ->
 
     wxWindow:show(Frame),
 
-    loop(#state{ frame = Frame, window = Win, pid = Pid}).
+    loop(#state{ frame = Frame, window = Win, pid = Pid, rs = Pid2}).
 
 
 loop(S) ->
@@ -108,7 +110,7 @@ handle_msg(#wx{ id=?file_cookie, event = #wxCommand{type = command_menu_selected
     wxDialog:destroy(TextDialog),
     S;
 
-handle_msg(#wx{ id=?file_connect, event = #wxCommand{type = command_menu_selected}, obj = Frame}, #state{ pid = Pid, tracer = undefined} = S) ->
+handle_msg(#wx{ id=?file_connect, event = #wxCommand{type = command_menu_selected}, obj = Frame}, #state{ pid = Pid, rs = Rs, tracer = undefined} = S) ->
     TextDialog = wxTextEntryDialog:new(Frame, "Node: ", [{caption, "Connect to Node"}]),
     wxDialog:showModal(TextDialog),
 
@@ -127,7 +129,7 @@ handle_msg(#wx{ id=?file_connect, event = #wxCommand{type = command_menu_selecte
 			ok
 		end),
 		
-		tracer(Node, Pid)
+		tracer(Node, Pid, Rs)
 	    catch
 		C:E ->
 		    io:format("connect error ~p:~p~n", [C,E]),
@@ -156,16 +158,16 @@ handle_msg(_, S) ->
     S.
 
 
-tracer(Node, Graph) ->
-    spawn_link(fun() -> tracer_init(Node, Graph) end).
+tracer(Node, Graph, Rs) ->
+    spawn_link(fun() -> tracer_init(Node, Graph, Rs) end).
 
-tracer_init(Node, Graph) ->
+tracer_init(Node, Graph, Rs) ->
     
     Me = self(),
     
     %% setup remote tracer
     FunStr = 
-    	"TraceFun = dbg:trace_port(ip, {4712, 16000}), Fun =  fun() -> link(Me), "
+    	"TraceFun = dbg:trace_port(ip, {4799, 16000}), Fun =  fun() -> link(Me), "
 	"Port = TraceFun(),"
 	"erlang:system_flag(multi_scheduling, block),"
 	"Data = [{P, erlang:process_info(P)} || P <- erlang:processes()],"
@@ -186,7 +188,6 @@ tracer_init(Node, Graph) ->
     RemotePid = rpc:call(Node, erlang, spawn, [SetupFun]),
 
     % wait for ready then setup trace receiver
-
     receive {trace_port, RemotePid, ready} -> ok end,
 
     Handler = fun
@@ -198,7 +199,7 @@ tracer_init(Node, Graph) ->
 	    In
     end,
     
-    Client = dbg:trace_client(ip, 4712, {Handler, io}),
+    Client = dbg:trace_client(ip, 4799, {Handler, io}),
 
     %% receive initial data and populate graph
 
@@ -206,9 +207,9 @@ tracer_init(Node, Graph) ->
 
     {Registry, Procs} = apps(Graph, Pis),
 
-    tracer_loop(#tstate{ registry = Registry, n = 1, graph = Graph, node = Node, procs = Procs, client = Client, server = RemotePid}).
+    tracer_loop(#tstate{ registry = Registry, n = 1, rs = Rs, graph = Graph, node = Node, procs = Procs, client = Client, server = RemotePid}).
 
-tracer_loop(#tstate{ graph = Graph, n = N, node = Node} = S) ->
+tracer_loop(#tstate{ rs = Rs, graph = Graph, n = N, node = Node} = S) ->
     receive
         stop_tracer ->
 	    fgraph_win:clear(Graph),
@@ -216,14 +217,16 @@ tracer_loop(#tstate{ graph = Graph, n = N, node = Node} = S) ->
 	    S#tstate.server ! stop,
 	    ok;
 
-	{profile, Pid, active, _Mfa, _Ts} ->
-	     fgraph_win:change_node(Graph, Pid, {10,250,10}),
-	     fgraph_win:set_runnability(Graph, N + 1),
+	{profile, Pid, active, _Mfa, Ts} ->
+	     %fgraph_win:change_node(Graph, Pid, {10,250,10}),
+	     %fgraph_win:set_runnability(Graph, N + 1),
+	     percept_win:add(Rs, {Ts, active}),
 	     tracer_loop(S#tstate{ n = N + 1});
 
-	{profile, Pid, inactive, _Mfa, _Ts} ->
-	     fgraph_win:change_node(Graph, Pid, {250,10,10}),
-	     fgraph_win:set_runnability(Graph, N - 1),
+	{profile, Pid, inactive, _Mfa, Ts} ->
+	     %fgraph_win:change_node(Graph, Pid, {250,10,10}),
+	     %fgraph_win:set_runnability(Graph, N - 1),
+	     percept_win:add(Rs, {Ts, inactive}),
 	     tracer_loop(S#tstate{ n = N - 1});
 
 	{trace, Pid, register, Name} ->
