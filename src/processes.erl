@@ -46,7 +46,7 @@ init() ->
     MainSz = wxBoxSizer:new(?wxVERTICAL),
     Panel  = wxPanel:new(Frame),
     {Pid,Win} = fgraph_win:new(Panel, []),
-    {Pid2,Win2} = percept_win:new(Panel, []),
+    %{Pid2,Win2} = percept_win:new(Panel, []),
     
     %% Menues
     MenuBar = wxMenuBar:new(),
@@ -71,7 +71,6 @@ init() ->
     wxSizerFlags:proportion(SF,1),
  
     wxSizer:add(MainSz, Win, wxSizerFlags:proportion(wxSizerFlags:expand(SF),3)),
-    wxSizer:add(MainSz, Win2, wxSizerFlags:proportion(wxSizerFlags:expand(SF),1)),
    
     wxWindow:setSizer(Panel, MainSz),
     wxSizer:fit(MainSz, Frame),
@@ -80,7 +79,7 @@ init() ->
 
     wxWindow:show(Frame),
 
-    loop(#state{ frame = Frame, window = Win, pid = Pid, rs = Pid2}).
+    loop(#state{ frame = Frame, window = Win, pid = Pid }).
 
 
 loop(S) ->
@@ -220,17 +219,17 @@ tracer_loop(#tstate{ rs = Rs, graph = Graph, n = N, node = Node} = S) ->
 	{profile, Pid, active, _Mfa, Ts} ->
 	     %fgraph_win:change_node(Graph, Pid, {10,250,10}),
 	     %fgraph_win:set_runnability(Graph, N + 1),
-	     percept_win:add(Rs, {Ts, active}),
+	     %percept_win:add(Rs, {Ts, active}),
 	     tracer_loop(S#tstate{ n = N + 1});
 
 	{profile, Pid, inactive, _Mfa, Ts} ->
 	     %fgraph_win:change_node(Graph, Pid, {250,10,10}),
 	     %fgraph_win:set_runnability(Graph, N - 1),
-	     percept_win:add(Rs, {Ts, inactive}),
+	     %percept_win:add(Rs, {Ts, inactive}),
 	     tracer_loop(S#tstate{ n = N - 1});
 
 	{trace, Pid, register, Name} ->
-	     io:format("register ~p ~p~n", [Pid, Name]),
+	     % io:format("register ~p ~p~n", [Pid, Name]),
 	     tracer_loop(S#tstate{ registry = gb_trees:enter(Name, Pid, S#tstate.registry)});
 	{trace, Pid, unregister, _Name} ->
 	     tracer_loop(S);
@@ -364,7 +363,7 @@ apps(Graph, [], Parents, Registry, Procs, AllLinks) ->
 	    	(Link) when is_pid(Link) ->
 	    	    case gb_trees:is_defined(Link, Procs) of
 		        true ->
-			    io:format("link ~p~n", [Link]),
+			    % io:format("link ~p~n", [Link]),
 			    fgraph_win:add_link(Graph, {Pid, Link}, link);
 			false ->
 			    ok
