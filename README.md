@@ -20,3 +20,7 @@ In the erlang shell type:
 
 
 A wxErlang window will appear and you can now connect to a remote node by clicking File in the meny and then Connect. Type in the remote node name, e.g.: mynode@hostname
+
+The result can look like this:
+![processes-mnesia](https://github.com/psyeugenic/fgraph/raw/master/doc/processes-mnesia.png)
+![processes-mnesia](https://github.com/psyeugenic/fgraph/raw/master/doc/processes-bigbang.png)
