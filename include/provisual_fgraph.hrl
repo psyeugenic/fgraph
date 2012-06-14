@@ -21,5 +21,7 @@
 	type = dynamic,
 	state = running,
 	resides = undefined,
-	selected = false
+	selected = false,
+	color,
+	name
 	}).

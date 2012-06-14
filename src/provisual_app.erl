@@ -1,3 +1,9 @@
+%% Copyright (C) 2012 Björn-Egil Dahlberg
+%%
+%% File:    provisual_app.erl
+%% Author:  Björn-Egil Dahlberg
+%% Created: 2012-06-15
+
 -module(provisual_app).
 
 -behaviour(application).

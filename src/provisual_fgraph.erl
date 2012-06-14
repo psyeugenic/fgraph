@@ -16,7 +16,7 @@
 %% 
 %% %CopyrightEnd%
 
--module(fgraph).
+-module(provisual_fgraph).
 
 -export([
 	step/2,
@@ -43,7 +43,7 @@
 -compile(inline).
 -compile({inline_size, 128}).
 
--include("fgraph.hrl").
+-include_lib("provisual_fgraph.hrl").
 
 
 size(S)          -> dict:size(S).

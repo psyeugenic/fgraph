@@ -1,4 +1,10 @@
--module(processes).
+%% Copyright (C) 2012 Björn-Egil Dahlberg
+%%
+%% File:    provisual.erl
+%% Author:  Björn-Egil Dahlberg
+%% Created: 2012-06-15
+
+-module(provisual).
 -export([start/0]).
 
 
@@ -31,22 +37,20 @@
 -define(view_ancestry, 104).
 -define(file_cookie, 105).
 
-start() ->
-    spawn(fun() -> init() end).
+start() -> spawn(fun() -> init() end).
 
 init() ->
     Wt = 1020,
     Ht = 800,
     Wx = wx:new(),
-    Frame = wxFrame:new(Wx, -1, "Processes", []),
+    Frame = wxFrame:new(Wx, -1, "Provisual", []),
 
     wxFrame:createStatusBar(Frame,[]),
     wxFrame:connect(Frame, close_window),
 
     MainSz = wxBoxSizer:new(?wxVERTICAL),
     Panel  = wxPanel:new(Frame),
-    {Pid,Win} = fgraph_win:new(Panel, []),
-    %{Pid2,Win2} = percept_win:new(Panel, []),
+    {Pid,Win} = provisual_fgraph_win:new(Panel, []),
     
     %% Menues
     MenuBar = wxMenuBar:new(),
@@ -121,7 +125,7 @@ handle_msg(#wx{ id=?file_connect, event = #wxCommand{type = command_menu_selecte
 		Node = list_to_atom(NodeStr),
 		pong = net_adm:ping(Node),
 
-		fgraph_win:set_click(Pid, fun
+		provisual_fgraph_win:set_click(Pid, fun
 		    (Key) -> 
 			Pi = rpc:call(Node, erlang, process_info, [Key]),
 			[io:format("~p\t~p~n", [K,V]) || {K, V} <- Pi],
@@ -146,11 +150,11 @@ handle_msg(#wx{ event = #wxClose{}}, S) ->
     erlang:halt();
 
 handle_msg(#wx{ id = ?view_links, event = #wxCommand{type = command_menu_selected}}, #state{ pid = Pid } = S) ->
-    fgraph_win:set_links(Pid, link),
+    provisual_fgraph_win:set_links(Pid, link),
     S;
 
 handle_msg(#wx{ id = ?view_ancestry, event = #wxCommand{type = command_menu_selected}}, #state{ pid = Pid} = S) ->
-    fgraph_win:set_links(Pid, default),
+    provisual_fgraph_win:set_links(Pid, default),
     S;
 
 handle_msg(_, S) ->
@@ -206,42 +210,38 @@ tracer_init(Node, Graph, Rs) ->
 
     {Registry, Procs} = apps(Graph, Pis),
 
-    tracer_loop(#tstate{ registry = Registry, n = 1, rs = Rs, graph = Graph, node = Node, procs = Procs, client = Client, server = RemotePid}).
+    tracer_loop(#tstate{
+	    registry = Registry, n = 1, rs = Rs, 
+	    graph = Graph, node = Node, procs = Procs,
+	    client = Client, server = RemotePid
+	}).
 
 tracer_loop(#tstate{ rs = Rs, graph = Graph, n = N, node = Node} = S) ->
     receive
         stop_tracer ->
-	    fgraph_win:clear(Graph),
+	    provisual_fgraph_win:clear(Graph),
 	    dbg:stop_trace_client(S#tstate.client),
 	    S#tstate.server ! stop,
 	    ok;
 
 	{profile, Pid, active, _Mfa, Ts} ->
-	     %fgraph_win:change_node(Graph, Pid, {10,250,10}),
-	     %fgraph_win:set_runnability(Graph, N + 1),
-	     %percept_win:add(Rs, {Ts, active}),
 	     tracer_loop(S#tstate{ n = N + 1});
 
 	{profile, Pid, inactive, _Mfa, Ts} ->
-	     %fgraph_win:change_node(Graph, Pid, {250,10,10}),
-	     %fgraph_win:set_runnability(Graph, N - 1),
-	     %percept_win:add(Rs, {Ts, inactive}),
 	     tracer_loop(S#tstate{ n = N - 1});
 
 	{trace, Pid, register, Name} ->
-	     % io:format("register ~p ~p~n", [Pid, Name]),
 	     tracer_loop(S#tstate{ registry = gb_trees:enter(Name, Pid, S#tstate.registry)});
 	{trace, Pid, unregister, _Name} ->
 	     tracer_loop(S);
          
 	 % liveness
 	{trace, Pid, exit, _ } ->
-	     fgraph_win:del_node(Graph, Pid),
+	     provisual_fgraph_win:del_node(Graph, Pid),
 	     tracer_loop(S#tstate{ procs = gb_trees:delete(Pid, S#tstate.procs)});
 	{trace, Pid, spawn, Pid2, MFAs} ->
-	 %    fgraph_win:add_node(Graph, Pid),
-	     fgraph_win:add_node(Graph, Pid2, {250, 10, 10}, mfa2name(MFAs)),
-	     fgraph_win:add_link(Graph, {Pid, Pid2}),
+	     provisual_fgraph_win:add_node(Graph, Pid2, {250, 10, 10}, mfa2name(MFAs)),
+	     provisual_fgraph_win:add_link(Graph, {Pid, Pid2}),
 	     tracer_loop(S#tstate{ procs = gb_trees:enter(Pid2, ok, S#tstate.procs)});
 	
 	 % linkage
@@ -250,10 +250,10 @@ tracer_loop(#tstate{ rs = Rs, graph = Graph, n = N, node = Node} = S) ->
 	{trace, _Pid, getting_linked, _Pid2} ->
 	     tracer_loop(S);
 	{trace, Pid, link, Pid2} ->
-	     fgraph_win:add_link(Graph, {Pid, Pid2}, link),
+	     provisual_fgraph_win:add_link(Graph, {Pid, Pid2}, link),
 	     tracer_loop(S);
 	{trace, Pid, unlink, Pid2} ->
-	     fgraph_win:del_link(Graph, {Pid, Pid2}, link),
+	     provisual_fgraph_win:del_link(Graph, {Pid, Pid2}, link),
 	     tracer_loop(S);
 
 	 % msgs
@@ -274,7 +274,7 @@ handle_trace_send(#tstate{ graph = Graph, node = Node, procs = Procs}, Pid, Pid2
 	    io:format("What the crap: ~p~n", [Pid2]),
 	    ok;
 	_ ->
-    	    fgraph_win:add_event(Graph, {Pid, Pid2})
+    	    provisual_fgraph_win:add_event(Graph, {Pid, Pid2})
     end;
 handle_trace_send(#tstate{ node = Node } = S, Pid, {Name, Node}) when is_atom(Name) ->
     handle_trace_send(S, Pid, Name);
@@ -351,7 +351,7 @@ apps(Graph, [], Parents, Registry, Procs, AllLinks) ->
     	({P1, P2}) ->
 	    case gb_trees:is_defined(P1, Procs) of
 	    	true ->
-		    fgraph_win:add_link(Graph, {P1, P2}),
+		    provisual_fgraph_win:add_link(Graph, {P1, P2}),
 		    ok;
 		_ ->
 		    ok
@@ -364,7 +364,7 @@ apps(Graph, [], Parents, Registry, Procs, AllLinks) ->
 	    	    case gb_trees:is_defined(Link, Procs) of
 		        true ->
 			    % io:format("link ~p~n", [Link]),
-			    fgraph_win:add_link(Graph, {Pid, Link}, link);
+			    provisual_fgraph_win:add_link(Graph, {Pid, Link}, link);
 			false ->
 			    ok
 		    end;
@@ -401,7 +401,5 @@ apps(Graph, [{Pid, Pi}|Pis], Parents, Registry, Procs, AllLinks) ->
 	{Mfa, undefined} -> {mfa2name(Mfa), []};
 	{_, Register}    -> {mfa2name(RegisteredName), []}
     end,
-    fgraph_win:add_node(Graph, Pid, {250,10,10}, Name),
+    provisual_fgraph_win:add_node(Graph, Pid, {250,10,10}, Name),
     apps(Graph, Pis, Relations ++ Parents, Registry, gb_trees:enter(Pid, ok, Procs), [{Pid, Links}|AllLinks]).
-
-

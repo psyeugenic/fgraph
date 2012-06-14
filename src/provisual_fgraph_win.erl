@@ -16,7 +16,7 @@
 %% 
 %% %CopyrightEnd%
 
--module(fgraph_win).
+-module(provisual_fgraph_win).
 
 -export([
          new/2,
@@ -40,7 +40,7 @@
         ]).
 
 -include_lib("wx/include/wx.hrl").
--include("fgraph.hrl").
+-include_lib("provisual_fgraph.hrl").
 
 -record(state,
         {
@@ -208,7 +208,7 @@ init([ParentWin, Pid, Env, Options]) ->
 
     wxWindow:setFocus(Win), %% Get keyboard focus
   
-    Vs = fgraph:new(),
+    Vs = provisual_fgraph:new(),
 
     Me = self(),
     Ticker = spawn_link(fun() -> ticker_init(Me) end),
@@ -223,14 +223,14 @@ init([ParentWin, Pid, Env, Options]) ->
 		  ticker = Ticker},
           #graph{ vs = Vs,
 		  es = default,
-		  es_wheel = gb_trees:enter(default, fgraph:new(), gb_trees:empty()),
+		  es_wheel = gb_trees:enter(default, provisual_fgraph:new(), gb_trees:empty()),
 		  pen = Pen,
 		  font = Font,
 		  events = gb_trees:empty(),
 		  brush = Brush}).
 
 graph_add_node_unsure(Key, State, Name, G = #graph{ vs = Vs }) ->
-    case fgraph:is_defined(Key, Vs) of
+    case provisual_fgraph:is_defined(Key, Vs) of
         true  -> G;
         false -> graph_add_node(Key, State, Name, G)
     end.
@@ -240,18 +240,18 @@ graph_add_node(Key, Color, Name, G = #graph{ vs = Vs}) ->
     M  = 0.5,    % mass
     P  = {float(450 + random:uniform(100)),
 	  float(450 + random:uniform(100))},
-    G#graph{ vs = fgraph:add(Key, #fg_v{ p = P, m = M, q = Q, color = Color, name = Name}, Vs)}.
+    G#graph{ vs = provisual_fgraph:add(Key, #fg_v{ p = P, m = M, q = Q, color = Color, name = Name}, Vs)}.
 
 graph_change_node(Key, Color, G) ->
-    case fgraph:get(Key, G#graph.vs) of
+    case provisual_fgraph:get(Key, G#graph.vs) of
 	undefined -> 
 	    G;
 	V ->
-	    G#graph{ vs = fgraph:set(Key, V#fg_v{ color = Color }, G#graph.vs)}
+	    G#graph{ vs = provisual_fgraph:set(Key, V#fg_v{ color = Color }, G#graph.vs)}
     end.
 
 graph_del_node(Key, G = #graph{ vs = Vs0, es_wheel = Tree0}) ->
-    Vs = fgraph:del(Key, Vs0),
+    Vs = provisual_fgraph:del(Key, Vs0),
     NewTree = lists:foldl(fun
     	({Wheel, Es0}, Tree) ->
     	    Es1 = delete_edges(Es0, [Key]),
@@ -263,10 +263,10 @@ graph_del_node(Key, G = #graph{ vs = Vs0, es_wheel = Tree0}) ->
 graph_add_link(Key0, Key1, Es) ->
     K  = 60.0,   % attractive force 
     L  =  5.0,   % spring length
-    fgraph:add({Key0, Key1}, #fg_e{ k = K, l = L}, Es).
+    provisual_fgraph:add({Key0, Key1}, #fg_e{ k = K, l = L}, Es).
 
 graph_del_link(Key0, Key1, Es) ->
-    fgraph:del({Key0, Key1}, Es).
+    provisual_fgraph:del({Key0, Key1}, Es).
 
 ticker_init(Pid) ->
     ticker_loop(Pid, 50).
@@ -286,27 +286,27 @@ ticker_loop(Pid, Time) ->
 delete_edges(Es, []) -> 
     Es;
 delete_edges(Es, [Key|Keys]) ->
-    Edges = fgraph:foldl(fun
+    Edges = provisual_fgraph:foldl(fun
         ({{K1, K2}, _}, Out) when K1 =:= Key -> [{K1,K2}|Out];
         ({{K1, K2}, _}, Out) when K2 =:= Key -> [{K1,K2}|Out];
         (_, Out) -> Out
     end, [], Es),
     Es1 = lists:foldl(fun
-        (K, Esi) -> fgraph:del(K, Esi)
+        (K, Esi) -> provisual_fgraph:del(K, Esi)
     end, Es, Edges),
     delete_edges(Es1, Keys).
     
 
 set_charge(Q, #graph{ vs = Vs} = G) -> % Repulsive force
     F = fun({Key, Value}) -> {Key, Value#fg_v{ q = Q}} end,
-    G#graph{ vs = fgraph:map(F, Vs)}.
+    G#graph{ vs = provisual_fgraph:map(F, Vs)}.
 
 
 set_spring(K, #graph{ es_wheel = Wheel} = G) -> % Attractive force
     G#graph{ es_wheel = lists:foldl(fun
 	({Key, Es}, Tree) ->
 	    F  = fun({Ps, E}) -> {Ps, E#fg_e{ k = K}} end,
-	    gb_trees:enter(Key, fgraph:map(F, Es), Tree)
+	    gb_trees:enter(Key, provisual_fgraph:map(F, Es), Tree)
 	end, Wheel, gb_trees:to_list(Wheel)) }.
 
 loop(S, G) ->
@@ -323,12 +323,12 @@ loop(S, G) ->
 
             G2 = set_spring(K, G),
 	    
-            Vs2 = fgraph:map(fun
+            Vs2 = provisual_fgraph:map(fun
 	    	({Key, V}) ->
 		     {Key, V#fg_v{selected = false, type = dynamic, q = Q}}
 	    end, G2#graph.vs),
 
-            {Xs, Ys} = fgraph:foldl(fun({_Key, #fg_v{p = {X, Y}}}, {Xs, Ys}) ->
+            {Xs, Ys} = provisual_fgraph:foldl(fun({_Key, #fg_v{p = {X, Y}}}, {Xs, Ys}) ->
 	    				    {[X| Xs], [Y | Ys]}
 	    			    end,
 	    			    {[], []},
@@ -360,7 +360,7 @@ loop(S, G) ->
             loop(S#state{is_frozen = IsFrozen}, G);
         #wx{id = ?lock, event = #wxCommand{type=command_button_clicked}} ->
 	    %% Lock all selected nodes
-            Vs = fgraph:map(fun
+            Vs = provisual_fgraph:map(fun
                             ({Key, V = #fg_v{selected = true}}) ->
 				   {Key, V#fg_v{ type = static  }};
                             (KV) -> KV
@@ -368,7 +368,7 @@ loop(S, G) ->
             loop(S, G#graph{ vs = Vs });
         #wx{id = ?unlock, event = #wxCommand{type=command_button_clicked}} ->
 	    %% Unlock all selected nodes
-            Vs = fgraph:map(fun
+            Vs = provisual_fgraph:map(fun
                             ({Key, V = #fg_v{selected = true}}) ->
 				   {Key, V#fg_v{ type = dynamic }};
                             (KV) -> KV
@@ -376,9 +376,9 @@ loop(S, G) ->
             loop(S, G#graph{ vs = Vs });
         #wx{id = ?delete, event = #wxCommand{type=command_button_clicked}} ->
 	    %% Delete all selected nodes
-            {Vs1, Keys} = fgraph:foldl(fun
+            {Vs1, Keys} = provisual_fgraph:foldl(fun
                                        ({Key, #fg_v{ selected = true}}, {Vs, Ks}) ->
-					      {fgraph:del(Key,Vs), [Key|Ks]};
+					      {provisual_fgraph:del(Key,Vs), [Key|Ks]};
                                        (_, {Vs, Ks}) -> {Vs, Ks}
                                       end, {G#graph.vs,[]}, G#graph.vs),
 	    Tree0 = G#graph.es_wheel,
@@ -402,8 +402,8 @@ loop(S, G) ->
             loop(S, set_spring(K, G));
         #wx{event=#wxKey{type=key_up, keyCode = 127}} -> % delete
             {Vs1, Keys} =
-		fgraph:foldl(fun({Key, #fg_v{ selected = true}}, {Vs, Ks}) ->
-				     {fgraph:del(Key,Vs), [Key|Ks]};
+		provisual_fgraph:foldl(fun({Key, #fg_v{ selected = true}}, {Vs, Ks}) ->
+				     {provisual_fgraph:del(Key,Vs), [Key|Ks]};
 				(_, {Vs, Ks}) ->
 				     {Vs, Ks}
 			     end,
@@ -506,7 +506,7 @@ loop(S, G) ->
 		    EsW  = graph_add_link(K0, K1, gb_trees:get(Wheel, Tree)),
 		    gb_trees:enter(Wheel, EsW, Tree);
 		false ->
-		    EsW  = graph_add_link(K0, K1, fgraph:new()),
+		    EsW  = graph_add_link(K0, K1, provisual_fgraph:new()),
 		    gb_trees:enter(Wheel, EsW, Tree)
 	    end,
 	    loop(S, G#graph{ es_wheel = EsWheel});
@@ -522,9 +522,9 @@ loop(S, G) ->
 	    loop(S, G#graph{ es_wheel = EsWheel});
 	
 	clear_nodes_and_links ->
-	    loop(S, G#graph{ 	vs = fgraph:new(), 
+	    loop(S, G#graph{ 	vs = provisual_fgraph:new(), 
 	    			es = default, 
-				es_wheel = gb_trees:enter(default, fgraph:new(), gb_trees:empty()),
+				es_wheel = gb_trees:enter(default, provisual_fgraph:new(), gb_trees:empty()),
 		  		events = gb_trees:empty()});
 
         {set_links, Wheel} ->
@@ -538,7 +538,7 @@ loop(S, G) ->
 	    %io:format("redraw: get es~n"),
 	    Es = gb_trees:get(G#graph.es, G#graph.es_wheel),
 	    %io:format("redraw: step graph~n"),
-            Vs = fgraph:step(G#graph.vs, Es, {SizeX/2.0 - 20.0, SizeY/2.0}),
+            Vs = provisual_fgraph:step(G#graph.vs, Es, {SizeX/2.0 - 20.0, SizeY/2.0}),
             case S#state.is_frozen of
                 false -> 
                     Req ! {self(), ok};
@@ -576,14 +576,14 @@ mouse_left_down_move(#graph{vs = Vs} = G, {X, Y}) ->
         false ->
             G#graph{ offset_state = {X,Y}};
         {true, Key} ->
-            V = #fg_v{ type = Type} = fgraph:get(Key, Vs), 
-            G#graph{ vs = fgraph:set(Key, V#fg_v{ type = moving}, Vs), select = {node, Key, Type, X, Y} }
+            V = #fg_v{ type = Type} = provisual_fgraph:get(Key, Vs), 
+            G#graph{ vs = provisual_fgraph:set(Key, V#fg_v{ type = moving}, Vs), select = {node, Key, Type, X, Y} }
     end.
 
 coord_to_key(#graph{vs = Vs, offset = {Xo, Yo}}, {X, Y}) ->
     Xr = X - Xo,
     Yr = Y - Yo,
-    fgraph:foldl(fun({Key, #fg_v{ p = {Px, Py}}}, _) when abs(Px - Xr) < 10,
+    provisual_fgraph:foldl(fun({Key, #fg_v{ p = {Px, Py}}}, _) when abs(Px - Xr) < 10,
                                                           abs(Py - Yr) < 10 -> {true, Key};
                     (_, Out) -> Out
                  end, false, Vs).    
@@ -596,7 +596,7 @@ mouse_left_up_select(G, {_X,_Y}) ->
             Xmax = lists:max([X1,X0]) - Xo,
             Ymin = lists:min([Y0,Y1]) - Yo,
             Ymax = lists:max([Y1,Y0]) - Yo,
-            Vs = fgraph:map(fun
+            Vs = provisual_fgraph:map(fun
                 ({Key, Value = #fg_v{ p = {Px, Py}}})
    		   when Px > Xmin, Px < Xmax, Py > Ymin, Py < Ymax ->
                     {Key, Value#fg_v{ selected = true }};
@@ -619,14 +619,14 @@ mouse_left_up_move(#graph{ select = Select, vs = Vs, click_fun = Fun} = G, {X,Y}
 	    end,
             G#graph{ select = none, offset_state = false };
         {node, Key, Type, _, _} ->
-            V = fgraph:get(Key, Vs),
+            V = provisual_fgraph:get(Key, Vs),
             Type2 =
                 case Shift of
                     true -> static;
                     false -> Type
                 end,
             G#graph{ select = none,
-		     vs = fgraph:set(Key, V#fg_v{ type = Type2}, Vs),
+		     vs = provisual_fgraph:set(Key, V#fg_v{ type = Type2}, Vs),
 		     offset_state = false };
         _ ->
             G#graph{ select = none, offset_state = false }
@@ -640,9 +640,9 @@ mouse_motion_select(G, {X,Y}) ->
 
 mouse_motion_move(G = #graph{ select = {node, Key, _, _, _}, vs = Vs}, {X,Y}) ->
     {Xo, Yo} = G#graph.offset,
-    V = fgraph:get(Key, Vs),
+    V = provisual_fgraph:get(Key, Vs),
     V2 = V#fg_v{ p = {float(X - Xo), float(Y - Yo)}},
-    G#graph{ vs = fgraph:set(Key, V2, Vs) };
+    G#graph{ vs = provisual_fgraph:set(Key, V2, Vs) };
 mouse_motion_move(G, {X,Y}) ->
     case G#graph.offset_state of
         {X1,Y1} -> 
@@ -716,7 +716,7 @@ redraw(DC, _Size, G) ->
 
         % draw information text
         wxFont:setWeight(Font,?wxNORMAL),
-        draw_text(DC, fgraph:size(G#graph.vs), fgraph:size(Es), G#graph.ke, G#graph.cr),
+        draw_text(DC, provisual_fgraph:size(G#graph.vs), provisual_fgraph:size(Es), G#graph.ke, G#graph.cr),
 
         ok
     end).
@@ -734,7 +734,7 @@ draw_runnability(Dc, [{_, N}|Rs], Xi) ->
 
 draw_events(_, _, _, [], _) -> ok;
 draw_events(DC, Pen, Vs, [{{From,To}, I}|Events], Po) ->
-    case {fgraph:get(From, Vs), fgraph:get(To, Vs)} of
+    case {provisual_fgraph:get(From, Vs), provisual_fgraph:get(To, Vs)} of
     	{undefined, undefined} -> draw_events(DC, Pen, Vs, Events, Po);
     	{_, undefined} -> draw_events(DC, Pen, Vs, Events, Po);
     	{undefined, _} -> draw_events(DC, Pen, Vs, Events, Po);
@@ -758,10 +758,10 @@ draw_select_box(_DC, _) ->
     ok.
 
 draw_es(DC, Vs, Es, Po, Pen, Brush) ->
-    fgraph:foreach(fun
+    provisual_fgraph:foreach(fun
         ({{K1, K2}, _}) ->
-            #fg_v{ p = P1} = fgraph:get(K1, Vs),
-            #fg_v{ p = P2} = fgraph:get(K2, Vs),
+            #fg_v{ p = P1} = provisual_fgraph:get(K1, Vs),
+            #fg_v{ p = P2} = provisual_fgraph:get(K2, Vs),
             draw_arrow(DC, P1, P2, Po, Pen, Brush)
         end, Es).
 
@@ -796,7 +796,7 @@ draw_line(DC, {X0,Y0}, {X1, Y1}, {X, Y}) ->
     wxDC:drawLine(DC, {round(X0 + X), round(Y0 + Y)}, {round(X1 + X), round(Y1 + Y)}).
    
 draw_vs(DC, Vs, {Xo, Yo}, Pen, Brush) ->
-    fgraph:foreach(fun
+    provisual_fgraph:foreach(fun
 	({_Key, #fg_v{ p ={X, Y}, color = Color, name = String, selected = Sel}}) ->
 	    case Sel of
 		true ->
