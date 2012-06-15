@@ -149,7 +149,6 @@ loop(#s{frame=F, es = Es, vs = Vs,
 	sphere = Sphere,canvas=Canvas,
 	cam=Cam,time=T,font=_F} = S) ->
     %% Setup camera and light
-    io:format("in loop~n"),
     load_matrices(Cam),
 
     gl:lineWidth(1.0),
@@ -265,7 +264,6 @@ handle_msg(#wx{event=#wxSize{size={W,H}}}, #s{ cam = Cam0}= S) ->
     S#s{cam=Cam0#cam{ww=W,wh=H}};
 
 handle_msg( {Pid, force_step}, S) ->
-    io:format("stepped~n"),
     Vs  = S#s.vs,
     Vs1 = provisual_fgraph:step(Vs, S#s.es, {0.0, 0.0}),
     Pid ! {self(), ok},
@@ -624,8 +622,7 @@ tdiff({A2,B2,C2},{A1,B1,C1}) ->
     (A2-A1)*1000000+(B2-B1)*1000 + (C2-C1) / 1000.
 
 
-load_matrices(Cam) ->
-    load_matrices(Cam,false).
+load_matrices(Cam) -> load_matrices(Cam,false).
 load_matrices(Cam,IncludeLights) ->
     gl:matrixMode(?GL_PROJECTION),
     gl:loadIdentity(),
@@ -644,8 +641,7 @@ projection(#cam{distance=D,fov=Fov,hither=Hither,yon=Yon,
     end.
 
 modelview(#cam{origin=Origin,distance=Dist,azimuth=Az,
-	       elevation=El,pan_x=PanX,pan_y=PanY},
-	  Lights) ->
+	       elevation=El,pan_x=PanX,pan_y=PanY}, Lights) ->
     gl:matrixMode(?GL_MODELVIEW),
     gl:loadIdentity(),
     if
