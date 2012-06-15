@@ -135,7 +135,7 @@ init() ->
     
     Me = self(),
     register(?MODULE, self()),
-    _Ticker = spawn_link(fun() -> ticker_init(Me) end),
+    _Ticker = provisual_ticker:start(Me),
     loop(#s{
 	    frame=Frame, canvas=Canvas, font=DefFont, 
 	    rstate = #rs{}, time=#time{}, cam=camera_init(?W,?H), 
@@ -549,20 +549,6 @@ apps(Graph, [{Pid, Pi}|Pis], Parents, Registry, Procs, AllLinks) ->
     provisual_fgraph_win:add_node(Graph, Pid, {250,10,10}, Name),
     apps(Graph, Pis, Relations ++ Parents, Registry, gb_trees:enter(Pid, ok, Procs), [{Pid, Links}|AllLinks]).
 
-
-ticker_init(Pid) -> ticker_loop(Pid, 50).
-ticker_loop(Pid, Time) ->
-    receive after Time ->
-        Pid ! {self(), force_step},
-        T0 = now(),
-        receive {Pid, ok} -> ok end,
-        T1 = now(),
-        D = timer:now_diff(T1, T0) div 1000,
-        case 40 - D of
-            Ms when Ms < 0 -> ticker_loop(Pid, 0);
-            Ms -> ticker_loop(Pid, Ms)
-        end
-    end.
 
 
 
