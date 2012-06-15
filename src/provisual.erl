@@ -189,8 +189,8 @@ loop(#s{frame=F, es = Es, vs = Vs,
 
 handle_events(S) ->
     receive
-        Msg -> loop(handle_msg(Msg, S))
-    after 0 -> loop(S)
+        Msg -> handle_msg(Msg, S)
+    after 0 -> S
     end.
 
 handle_msg(#wx{ id=?file_cookie, event = #wxCommand{type = command_menu_selected}, obj = Frame}, S) ->
