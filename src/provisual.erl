@@ -144,19 +144,19 @@ loop(#s{frame=F, es = Es, vs = Vs,
     gl:color3f(1.0,1.0,1.0),
     provisual_fgraph:foreach(fun
 	    ({{K1,K2}, _}) ->
-		#fg_v{p={X1,Y1}} = provisual_fgraph:get(K1, Vs),
-		#fg_v{p={X2,Y2}} = provisual_fgraph:get(K2, Vs),
+		#fg_v{p={X1,Y1,Z1}} = provisual_fgraph:get(K1, Vs),
+		#fg_v{p={X2,Y2,Z2}} = provisual_fgraph:get(K2, Vs),
 		gl:'begin'(?GL_LINES),
 		draw_lines([
-			{ X1, 0, Y1},{X2, 0, Y2}
+			{ X1, Z1, Y1},{X2, Z2, Y2}
 		    ]),
 		gl:'end'()
 	end, Es),
     gl:color3f(1.0,0.0,0.4),
     provisual_fgraph:foreach(fun
-	    ({_Key, #fg_v{ p ={X, Y}}}) ->
+	    ({_Key, #fg_v{ p ={X, Y, Z}}}) ->
 		gl:pushMatrix(),
-		gl:translatef(X,0.0,Y),
+		gl:translatef(X,Z,Y),
 		Sphere(),
 		gl:popMatrix()
 	end, Vs),
@@ -254,7 +254,7 @@ handle_msg(#wx{event=#wxSize{size={W,H}}}, #s{ cam = Cam0}= S) ->
 
 handle_msg( {Pid, force_step}, S) ->
     Vs  = S#s.vs,
-    Vs1 = provisual_fgraph:step(Vs, S#s.es, {0.0, 0.0}),
+    Vs1 = provisual_fgraph:step(Vs, S#s.es, {0.0, 0.0, 0.0}),
     Pid ! {self(), ok},
     S#s{ vs = Vs1};
 
@@ -410,7 +410,8 @@ vs() ->
     M  = 0.5,    % mass
     lists:foldl(fun(K, Vs) ->
 		provisual_fgraph:add(K, #fg_v{
-			p = {p(), p()},
+			p = p3(),
+			v = {0.0,0.0,0.0},
 			m = M,
 			q = Q,
 			color = undefined,
@@ -428,4 +429,5 @@ es() ->
 	end, provisual_fgraph:new(), Keys).
 
 
-p() -> float(random:uniform(160) - 80).
+p1() -> float(random:uniform(160) - 80).
+p3() -> {p1(), p1(), p1()}.

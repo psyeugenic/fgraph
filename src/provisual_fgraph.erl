@@ -19,7 +19,6 @@
 -module(provisual_fgraph).
 
 -export([
-	step/2,
 	step/3
 	]).
 
@@ -121,7 +120,6 @@ mapfoldl(_F, I, S) -> {I, S}.
 %	end, I, Fg),
 %    {Fg, Acc}.
 %
-step(Vs, Es) -> step(Vs, Es, {0,0}).
 step(Vs, Es, Pa) ->
     ?MODULE:map(fun
 	(Node = {_, #fg_v{ type = static }}) -> Node;
@@ -165,13 +163,13 @@ point_attraction(_, #fg_v{ p = P0 }, Pa, {Fx, Fy, Fz}) when is_float(Fx), is_flo
     L = 150,
     {R, {Cx,Cy,Cz}} = composition(P0, Pa),
     F = -K*?fg_stretch*(R - L),
-    {Fx + Cx*F, Fy + Cy*F, Fz + Cz*F};
-point_attraction(_, #fg_v{ p = P0 }, Pa, {Fx, Fy}) when is_float(Fx), is_float(Fy) ->
-    K = 20,
-    L = 150,
-    {R, {Cx,Cy}} = composition(P0, Pa),
-    F = -K*?fg_stretch*(R - L),
-    {Fx + Cx*F, Fy + Cy*F}.
+    {Fx + Cx*F, Fy + Cy*F, Fz + Cz*F}.
+%point_attraction(_, #fg_v{ p = P0 }, Pa, {Fx, Fy}) when is_float(Fx), is_float(Fy) ->
+%    K = 20,
+%    L = 150,
+%    {R, {Cx,Cy}} = composition(P0, Pa),
+%    F = -K*?fg_stretch*(R - L),
+%    {Fx + Cx*F, Fy + Cy*F}.
 
 coulomb_repulsion(K0, #fg_v{ p = P0, q = Q0}, Vs, {Fx0, Fy0,Fz0}) when is_float(Fx0), is_float(Fy0), is_float(Fz0) ->
     ?MODULE:foldl(fun
