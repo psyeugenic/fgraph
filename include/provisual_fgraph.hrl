@@ -3,6 +3,7 @@
 -define(fg_kc, (1000.0)).
 -define(fg_stretch, (0.005)).
 -define(fg_grav, (9.82)).
+-define(fg_sqrt_eps, (0.005)).
 
 %% Ke = 8.854187817e9 [N x M^2 x C^(-2)]
 -define(fg_wind, (0.15)).
