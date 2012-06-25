@@ -72,7 +72,7 @@ init(Node, Graph, Rs) ->
 loop(#tstate{ graph = Graph, n = N} = S) ->
     receive
         stop_tracer ->
-	    provisual_fgraph_win:clear(Graph),
+	    provisual:clear(Graph),
 	    dbg:stop_trace_client(S#tstate.client),
 	    S#tstate.server ! stop,
 	    ok;
@@ -90,11 +90,11 @@ loop(#tstate{ graph = Graph, n = N} = S) ->
          
 	 % liveness
 	{trace, Pid, exit, _ } ->
-	     provisual_fgraph_win:del_node(Graph, Pid),
+	     provisual:del_node(Graph, Pid),
 	     loop(S#tstate{ procs = gb_trees:delete(Pid, S#tstate.procs)});
 	{trace, Pid, spawn, Pid2, MFAs} ->
-	     provisual_fgraph_win:add_node(Graph, Pid2, {250, 10, 10}, mfa2name(MFAs)),
-	     provisual_fgraph_win:add_link(Graph, {Pid, Pid2}),
+	     provisual:add_node(Graph, Pid2, {250, 10, 10}, mfa2name(MFAs)),
+	     provisual:add_link(Graph, {Pid, Pid2}, ancestry),
 	     loop(S#tstate{ procs = gb_trees:enter(Pid2, ok, S#tstate.procs)});
 	
 	 % linkage
@@ -103,10 +103,10 @@ loop(#tstate{ graph = Graph, n = N} = S) ->
 	{trace, _Pid, getting_linked, _Pid2} ->
 	     loop(S);
 	{trace, Pid, link, Pid2} ->
-	     provisual_fgraph_win:add_link(Graph, {Pid, Pid2}, link),
+	     provisual:add_link(Graph, {Pid, Pid2}, link),
 	     loop(S);
 	{trace, Pid, unlink, Pid2} ->
-	     provisual_fgraph_win:del_link(Graph, {Pid, Pid2}, link),
+	     provisual:del_link(Graph, {Pid, Pid2}, link),
 	     loop(S);
 
 	 % msgs
@@ -127,7 +127,7 @@ handle_trace_send(#tstate{ graph = Graph, node = Node, procs = Procs}, Pid, Pid2
 	    io:format("What the crap: ~p~n", [Pid2]),
 	    ok;
 	_ ->
-    	    provisual_fgraph_win:add_event(Graph, {Pid, Pid2})
+    	    provisual:add_event(Graph, {Pid, Pid2}, message)
     end;
 handle_trace_send(#tstate{ node = Node } = S, Pid, {Name, Node}) when is_atom(Name) ->
     handle_trace_send(S, Pid, Name);
@@ -204,7 +204,7 @@ apps(Graph, [], Parents, Registry, Procs, AllLinks) ->
     	({P1, P2}) ->
 	    case gb_trees:is_defined(P1, Procs) of
 	    	true ->
-		    provisual_fgraph_win:add_link(Graph, {P1, P2}),
+		    provisual:add_link(Graph, {P1, P2}, ancestry),
 		    ok;
 		_ ->
 		    ok
@@ -217,7 +217,7 @@ apps(Graph, [], Parents, Registry, Procs, AllLinks) ->
 	    	    case gb_trees:is_defined(Link, Procs) of
 		        true ->
 			    % io:format("link ~p~n", [Link]),
-			    provisual_fgraph_win:add_link(Graph, {Pid, Link}, link);
+			    provisual:add_link(Graph, {Pid, Link}, link);
 			false ->
 			    ok
 		    end;
@@ -254,7 +254,7 @@ apps(Graph, [{Pid, Pi}|Pis], Parents, Registry, Procs, AllLinks) ->
 	{Mfa, undefined} -> {mfa2name(Mfa), []};
 	{_, _Register}    -> {mfa2name(RegisteredName), []}
     end,
-    provisual_fgraph_win:add_node(Graph, Pid, {250,10,10}, Name),
+    provisual:add_node(Graph, Pid, {250,10,10}, Name),
     apps(Graph, Pis, Relations ++ Parents, Registry, gb_trees:enter(Pid, ok, Procs), [{Pid, Links}|AllLinks]).
 
 

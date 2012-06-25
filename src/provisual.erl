@@ -7,16 +7,16 @@
 -module(provisual).
 -export([start/0]).
 
+-export([
+	add_node/4,
+	del_node/2,
+	add_link/3,
+	del_link/3,
+	add_event/3,
+	clear/1
+    ]).
 
--record(state,{
-	frame,
-	window, 
-	pid,
-	rs,
-	width, 
-	height, 
-	tracer 
-	}).  
+
 
 -include_lib("wx/include/wx.hrl").
 -include_lib("wx/include/gl.hrl").
@@ -56,7 +56,20 @@
 	 ortho=false
 	}).
 
--record(s,  {frame, canvas, rstate, font, time, cam, vs, es, es2, sphere}).
+-record(s,  {
+	frame, 
+	canvas, 
+	rstate, 
+	font, 
+	time, 
+	cam, 
+	vs, 
+	es, 
+	es2, 
+	sphere,
+	tracer
+    }).
+
 -record(rs, {mat_shader = false, shadows = false}).
 
 -record(time, {
@@ -128,7 +141,9 @@ init() ->
     loop(#s{
 	    frame=Frame, canvas=Canvas, font=DefFont, 
 	    rstate = #rs{}, time=#time{}, cam=camera_init(?W,?H), 
-	    vs = vs(), es = es(), es2 = provisual_fgraph:new(),
+	    vs  = provisual_fgraph:new(),
+	    es  = provisual_fgraph:new(),
+	    es2 = provisual_fgraph:new(),
 	    sphere = load_sphere()
 	}).
 
@@ -184,7 +199,6 @@ handle_events(S) ->
 handle_msg(#wx{ id=?file_cookie, event = #wxCommand{type = command_menu_selected}, obj = Frame}, S) ->
     TextDialog = wxTextEntryDialog:new(Frame, "Cookie: ", [{caption, "Set Cookie"}]),
     wxDialog:showModal(TextDialog),
-
     try
 	case wxTextEntryDialog:getValue(TextDialog) of
 	    [] -> ok;
@@ -201,24 +215,25 @@ handle_msg(#wx{ id=?file_cookie, event = #wxCommand{type = command_menu_selected
     wxDialog:destroy(TextDialog),
     S;
 
-handle_msg(#wx{ id=?file_connect, event = #wxCommand{type = command_menu_selected}, obj = Frame}, #state{ pid = Pid, rs = Rs, tracer = undefined} = S) ->
+handle_msg(#wx{ id=?file_connect, event = #wxCommand{type = command_menu_selected}, obj = Frame}, #s{ tracer = undefined} = S) ->
     TextDialog = wxTextEntryDialog:new(Frame, "Node: ", [{caption, "Connect to Node"}]),
     wxDialog:showModal(TextDialog),
 
     Tracer = case wxTextEntryDialog:getValue(TextDialog) of
 	[] -> undefined;
 	NodeStr ->
+	    io:format("connect to node: ~p~n", [NodeStr]),
 	    try
 		Node = list_to_atom(NodeStr),
 		pong = net_adm:ping(Node),
-		provisual_fgraph_win:set_click(Pid, fun
-		    (Key) -> 
-			Pi = rpc:call(Node, erlang, process_info, [Key]),
-			[io:format("~p\t~p~n", [K,V]) || {K, V} <- Pi],
-			ok
-		end),
+	%	provisual_fgraph:set_click(Pid, fun
+	%	    (Key) -> 
+	%		Pi = rpc:call(Node, erlang, process_info, [Key]),
+	%		[io:format("~p\t~p~n", [K,V]) || {K, V} <- Pi],
+	%		ok
+	%	end),
 		
-		provisual_tracer:start(Node, Pid, Rs)
+	provisual_tracer:start(Node, self(), [])
 	    catch
 		C:E ->
 		    io:format("connect error ~p:~p~n", [C,E]),
@@ -226,19 +241,19 @@ handle_msg(#wx{ id=?file_connect, event = #wxCommand{type = command_menu_selecte
 	    end
     end,
     wxDialog:destroy(TextDialog),
-    S#state{ tracer = Tracer };
+    S#s{ tracer = Tracer };
 
-handle_msg(#wx{ id=?file_disconnect, event = #wxCommand{type = command_menu_selected}}, #state{ tracer = Tracer} = S) when is_pid(Tracer) ->
+handle_msg(#wx{ id=?file_disconnect, event = #wxCommand{type = command_menu_selected}}, #s{ tracer = Tracer} = S) when is_pid(Tracer) ->
     Tracer ! stop_tracer,
-    S#state{ tracer = undefined };
+    S#s{ tracer = undefined };
 
 handle_msg(#wx{ event = #wxClose{}}, _S) ->
     erlang:halt();
 
-handle_msg(#wx{ id = ?view_links, event = #wxCommand{type = command_menu_selected}}, #state{ pid = _Pid } = S) ->
+handle_msg(#wx{ id = ?view_links, event = #wxCommand{type = command_menu_selected}}, #s{ } = S) ->
     S;
 
-handle_msg(#wx{ id = ?view_ancestry, event = #wxCommand{type = command_menu_selected}}, #state{ pid = _Pid} = S) ->
+handle_msg(#wx{ id = ?view_ancestry, event = #wxCommand{type = command_menu_selected}}, #s{ } = S) ->
     S;
 
 handle_msg( #wx{event=#wxMouse{ type = right_down}}, S) ->
@@ -252,14 +267,65 @@ handle_msg(#wx{event=#wxSize{size={W,H}}}, #s{ cam = Cam0}= S) ->
     gl:viewport(0,0,W,H),
     S#s{cam=Cam0#cam{ww=W,wh=H}};
 
-handle_msg( {Pid, force_step}, S) ->
+handle_msg({Pid, force_step}, S) ->
     Vs  = S#s.vs,
     Vs1 = provisual_fgraph:step(Vs, S#s.es, {0.0, 0.0, 0.0}),
     Pid ! {self(), ok},
     S#s{ vs = Vs1};
 
+handle_msg({graph, Cmd}, S) ->
+    graph_event(Cmd, S);
+
+handle_msg(#wx{ id=Id, event = #wxCommand{type = command_menu_selected}}, S) ->
+    io:format("wx Id = ~p~n", [Id]),
+    S;
 handle_msg(Other, S) ->
     io:format("Got ~p ~n",[Other]),
+    S.
+
+graph_event(clear, S) -> 
+    S#s{ vs = provisual_fgraph:new(), es = provisual_fgraph:new(), es2 = provisual_fgraph:new()};
+graph_event({add_node, Id, Name}, #s{ vs = Vs0} = S) ->
+    Q  = 20.0,   % repulsive force
+    M  = 0.5,    % mass
+    Vs1 = provisual_fgraph:add(Id, #fg_v{
+	    p = p3(),
+	    v = {0.0,0.0,0.0},
+	    m = M,
+	    q = Q,
+	    color = undefined,
+	    name = Name}, Vs0),
+    S#s{vs = Vs1};
+graph_event({del_node, Id}, #s{ vs = Vs0, es = Ls0, es2 = As0} = S) ->
+    Vs1 = provisual_fgraph:del(Id, Vs0),
+    Ls1 = provisual_fgraph:foldl(fun
+	    ({{DId,_},_}, O) when DId =:= Id -> O;
+	    ({{_,DId},_}, O) when DId =:= Id -> O;
+	    ({K,V}, O) -> provisual_fgraph:add(K,V,O)
+	end, provisual_fgraph:new(), Ls0),
+
+    As1 = provisual_fgraph:foldl(fun
+	    ({{DId,_},_}, O) when DId =:= Id -> O;
+	    ({{_,DId},_}, O) when DId =:= Id -> O;
+	    ({K,V}, O) -> provisual_fgraph:add(K,V,O)
+	end, provisual_fgraph:new(), As0),
+    S#s{ vs = Vs1, es = Ls1, es2 = As1 };
+
+graph_event({add_edge, E, link}, #s{ es = Ls0 } = S) ->
+    K   = 30.0,   % attractive force 
+    L   =  5.0,   % spring length
+    S#s{ es = provisual_fgraph:add(E, #fg_e{ k = K, l = L}, Ls0) };
+
+graph_event({add_edge, E, ancestry}, #s{ es2 = Ls0 } = S) ->
+    K   = 30.0,   % attractive force 
+    L   =  5.0,   % spring length
+    S#s{ es2 = provisual_fgraph:add(E, #fg_e{ k = K, l = L}, Ls0) };
+	
+
+
+
+graph_event(Other, S) ->
+    io:format("Unhandled graph event ~p ~n", [Other]),
     S.
 
 
@@ -299,7 +365,7 @@ draw_lines([{X1,Y1,Z1},{X2,Y2,Z2}|Pts]) ->
      gl:vertex3f(X1,Y1,Z1),
      gl:vertex3f(X2,Y2,Z2),
      draw_lines(Pts);
-draw_lines([]) ->ok.
+draw_lines([]) -> ok.
 
 load_sphere() ->
     {Size, DataChunk, [Ns]} =
@@ -389,7 +455,7 @@ modelview(#cam{origin=Origin,distance=Dist,azimuth=Az,
 camera_init(W,H) ->
     #cam{origin={0.0,0.0,0.0},
 	 azimuth=-45.0,elevation=25.0,
-	 distance=50,
+	 distance=1350,
 	 pan_x=0.0,pan_y=-2.0,
 	 fov=45.0,
 	 hither=0.1,
@@ -399,34 +465,33 @@ camera_init(W,H) ->
 	 
 %%%%%%%%%
 
+%% graph nodes
+
+add_node(G, Id, _, Name) ->
+    G ! {graph, {add_node, Id, Name}},
+    ok.
+
+del_node(G, Id) ->
+    G ! {graph, {del_node, Id}},
+    ok.
+
+add_link(G, E, Type) ->
+    G ! {graph, {add_edge, E, Type}},
+    ok.
+
+del_link(G, E, Type) ->
+    G ! {graph, {del_edge, E, Type}},
+    ok.
+
+clear(G) ->
+    G ! {graph, clear},
+    ok.
+
+add_event(G, E, Type) ->
+    ok.
 
 
-%% not needed functions
-
--define(NP, 10).
-
-vs() ->
-    Q  = 20.0,   % repulsive force
-    M  = 0.5,    % mass
-    lists:foldl(fun(K, Vs) ->
-		provisual_fgraph:add(K, #fg_v{
-			p = p3(),
-			v = {0.0,0.0,0.0},
-			m = M,
-			q = Q,
-			color = undefined,
-			name = undefined}, Vs)
-	end, provisual_fgraph:new(), lists:seq(1,?NP)).
-
-
-es() ->
-    K   = 30.0,   % attractive force 
-    L   =  5.0,   % spring length
-    Ids = lists:seq(1,?NP),
-    Keys = [{K1,K2}||K1<-Ids,K2<-Ids, K1 =/= K2],
-    lists:foldl(fun(Map, Es) ->
-		provisual_fgraph:add(Map, #fg_e{ k = K, l = L}, Es)
-	end, provisual_fgraph:new(), Keys).
+%%
 
 
 p1() -> float(random:uniform(160) - 80).

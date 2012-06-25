@@ -45,81 +45,80 @@
 -include_lib("provisual_fgraph.hrl").
 
 
-size(S)          -> dict:size(S).
-new()            -> dict:new().
-delete(_S)       -> dict:new().
-add(K, V, S)     -> dict:store(K, {K,V}, S).
-set(K, V, S)     -> dict:store(K, {K,V}, S).
-del(K, S)        -> dict:erase(K, S).
-get(K, S)        -> case catch dict:fetch(K, S) of 
-			{'EXIT', _} -> undefined;
-			{_, V} -> V
-		    end.
-is_defined(K, S) -> dict:is_key(K, S).
-
-map(F, S)        -> dict:map(fun(_,V) -> F(V) end, S).
-foldl(F, I, S)   -> dict:fold(fun(_, V, O) -> F(V,O) end, I, S).
-
-foreach(F, S)    -> dict:map(fun(_,V) -> F(V) end, S), S.
-mapfoldl(_F, I, S) -> {I, S}.
+% size(S)          -> dict:size(S).
+% new()            -> dict:new().
+% add(K, V, S)     -> dict:store(K, {K,V}, S).
+% set(K, V, S)     -> dict:store(K, {K,V}, S).
+% del(K, S)        -> dict:erase(K, S).
+% get(K, S)        -> case catch dict:fetch(K, S) of 
+% 			{'EXIT', _} -> undefined;
+% 			{_, V} -> V
+% 		    end.
+% is_defined(K, S) -> dict:is_key(K, S).
+% 
+% map(F, S)        -> dict:map(fun(_,V) -> F(V) end, S).
+% foldl(F, I, S)   -> dict:fold(fun(_, V, O) -> F(V,O) end, I, S).
+% 
+% foreach(F, S)    -> dict:map(fun(_,V) -> F(V) end, S), S.
+% mapfoldl(_F, I, S) -> {I, S}.
 
 
 %% KEY-VALUE STORAGE Process dictionary
-%new() -> [].
-%
-%is_defined(Key, _Fg) ->
-%    case get(Key) of
-%	undefined -> false;
-%	_ -> true
-%    end.
-%
-%get(K, _Fg) ->
-%    case get(K) of
-%	{_, V} -> V;
-%	_ -> undefined
-%    end.
-%
-%add(Key, Value, Fg) ->
-%    put(Key, {Key, Value}),
-%    [Key|Fg].
-%
-%set(Key, Value, Fg) ->
-%    put(Key, {Key, Value}),
-%    Fg.
-%
-%size(Fg) -> length(Fg).
-%
-%del(Key, Fg) ->
-%    erase(Key),
-%    lists:delete(Key, Fg).
-%
-%foreach(Fun, Fg) ->
-%    lists:foreach(fun
-%	(Key) -> Fun(get(Key))
-%    end, Fg),
-%    Fg.
-%
-%map(Fun, Fg) -> 
-%    lists:foreach(fun
-%	(Key) -> put(Key,Fun(get(Key)))
-%    end, Fg),
-%    Fg.
-%
-%foldl(Fun, I, Fg) ->
-%    lists:foldl(fun
-%	(Key, Out) ->
-%	    Fun(get(Key), Out)
-%	end, I, Fg).
-%
-%mapfoldl(Fun, I, Fg) ->
-%    Acc = lists:foldl(fun
-%	(Key, Out) ->
-%	    {Value, Acc} = Fun(get(Key), Out),
-%	    put(Key, Value),
-%	    Acc
-%	end, I, Fg),
-%    {Fg, Acc}.
-%
+new() -> [].
+
+is_defined(Key, _Fg) ->
+    case get(Key) of
+	undefined -> false;
+	_ -> true
+    end.
+
+get(K, _Fg) ->
+    case get(K) of
+	{_, V} -> V;
+	_ -> undefined
+    end.
+
+add(Key, Value, Fg) ->
+    put(Key, {Key, Value}),
+    [Key|Fg].
+
+set(Key, Value, Fg) ->
+    put(Key, {Key, Value}),
+    Fg.
+
+size(Fg) -> length(Fg).
+
+del(Key, Fg) ->
+    erase(Key),
+    lists:delete(Key, Fg).
+
+foreach(Fun, Fg) ->
+    lists:foreach(fun
+	(Key) -> Fun(get(Key))
+    end, Fg),
+    Fg.
+
+map(Fun, Fg) -> 
+    lists:foreach(fun
+	(Key) -> put(Key,Fun(get(Key)))
+    end, Fg),
+    Fg.
+
+foldl(Fun, I, Fg) ->
+    lists:foldl(fun
+	(Key, Out) ->
+	    Fun(get(Key), Out)
+	end, I, Fg).
+
+mapfoldl(Fun, I, Fg) ->
+    Acc = lists:foldl(fun
+	(Key, Out) ->
+	    {Value, Acc} = Fun(get(Key), Out),
+	    put(Key, Value),
+	    Acc
+	end, I, Fg),
+    {Fg, Acc}.
+
 step(Vs, Es, Pa) ->
     ?MODULE:map(fun
 	(Node = {_, #fg_v{ type = static }}) -> Node;
@@ -163,13 +162,13 @@ point_attraction(_, #fg_v{ p = P0 }, Pa, {Fx, Fy, Fz}) when is_float(Fx), is_flo
     L = 150,
     {R, {Cx,Cy,Cz}} = composition(P0, Pa),
     F = -K*?fg_stretch*(R - L),
-    {Fx + Cx*F, Fy + Cy*F, Fz + Cz*F}.
-%point_attraction(_, #fg_v{ p = P0 }, Pa, {Fx, Fy}) when is_float(Fx), is_float(Fy) ->
-%    K = 20,
-%    L = 150,
-%    {R, {Cx,Cy}} = composition(P0, Pa),
-%    F = -K*?fg_stretch*(R - L),
-%    {Fx + Cx*F, Fy + Cy*F}.
+    {Fx + Cx*F, Fy + Cy*F, Fz + Cz*F};
+point_attraction(_, #fg_v{ p = P0 }, Pa, {Fx, Fy}) when is_float(Fx), is_float(Fy) ->
+    K = 20,
+    L = 150,
+    {R, {Cx,Cy}} = composition(P0, Pa),
+    F = -K*?fg_stretch*(R - L),
+    {Fx + Cx*F, Fy + Cy*F}.
 
 coulomb_repulsion(K0, #fg_v{ p = P0, q = Q0}, Vs, {Fx0, Fy0,Fz0}) when is_float(Fx0), is_float(Fy0), is_float(Fz0) ->
     ?MODULE:foldl(fun
@@ -245,15 +244,28 @@ hooke_attraction(Key0, #fg_v{ p = P0 }, Vs, Es, {Fx0, Fy0}) when is_float(Fx0), 
 	(_, F) -> F 
     end, {Fx0, Fy0}, Es).
 
+% This decomposition takes a lot of computing power, needs optimizing
 composition({Px1, Py1, Pz1}, {Px0, Py0, Pz0}) when is_float(Px1), is_float(Py1), is_float(Pz1),
 						   is_float(Px0), is_float(Py0), is_float(Pz0) ->
-    Dx  = Px1 - Px0,
-    Dy  = Py1 - Py0,
-    Dz  = Pz1 - Pz0,
-    R   = math:sqrt(Dx*Dx + Dy*Dy + Dz*Dz + ?fg_sqrt_eps),
+    Dx = Px1 - Px0,
+    Dy = Py1 - Py0,
+    Dz = Pz1 - Pz0,
+    R  = qsqrt(Dx*Dx + Dy*Dy + Dz*Dz + ?fg_sqrt_eps),
+    %R  = math:sqrt(Dx*Dx + Dy*Dy + Dz*Dz + ?fg_sqrt_eps),
     {R, {Dx/R, Dy/R, Dz/R}};
 composition({Px1, Py1}, {Px0, Py0}) when is_float(Px1), is_float(Py1), is_float(Px0), is_float(Py0) ->
-    Dx  = Px1 - Px0,
-    Dy  = Py1 - Py0,
-    R   = math:sqrt(Dx*Dx + Dy*Dy + ?fg_sqrt_eps),
+    Dx = Px1 - Px0,
+    Dy = Py1 - Py0,
+    R  = qsqrt(Dx*Dx + Dy*Dy + ?fg_sqrt_eps),
+    %R  = math:sqrt(Dx*Dx + Dy*Dy + ?fg_sqrt_eps),
     {R, {Dx/R, Dy/R}}.
+
+%% Carmacks Quake3 square root trick (sadly not faster then builtin math:sqrt/1)
+qsqrt(X) ->
+    X2 = X*0.5,
+    <<I:32>> = <<X:32/float>>,
+    Trick = 16#5f3759df - ( I bsr 1 ),
+    <<Inv:32/float>> = <<Trick:32>>,
+    Inv0 = Inv*(1.50 - (X2 * Inv * Inv)),
+    % Inv1 = Inv0*(1.5 - (X2 * Inv0 * Inv0)),
+    1/Inv0.
