@@ -19,6 +19,8 @@
 -module(provisual_fgraph).
 
 -export([
+	composition/2,
+	load_provisual_nif/0,
 	step/3
 	]).
 
@@ -38,6 +40,8 @@
 	foldl/3,
 	mapfoldl/3
 	]).
+
+-on_load(load_provisual_nif/0).
 
 -compile(inline).
 -compile({inline_size, 128}).
@@ -160,13 +164,13 @@ force_step(_Key, #fg_v{ p = {Px, Py}, v = {Vx, Vy}} = Value, {Fx, Fy}) ->
 point_attraction(_, #fg_v{ p = P0 }, Pa, {Fx, Fy, Fz}) when is_float(Fx), is_float(Fy), is_float(Fz) ->
     K = 20,
     L = 150,
-    {R, {Cx,Cy,Cz}} = composition(P0, Pa),
+    {R, {Cx,Cy,Cz}} = ?MODULE:composition(P0, Pa),
     F = -K*?fg_stretch*(R - L),
     {Fx + Cx*F, Fy + Cy*F, Fz + Cz*F};
 point_attraction(_, #fg_v{ p = P0 }, Pa, {Fx, Fy}) when is_float(Fx), is_float(Fy) ->
     K = 20,
     L = 150,
-    {R, {Cx,Cy}} = composition(P0, Pa),
+    {R, {Cx,Cy}} = ?MODULE:composition(P0, Pa),
     F = -K*?fg_stretch*(R - L),
     {Fx + Cx*F, Fy + Cy*F}.
 
@@ -174,7 +178,7 @@ coulomb_repulsion(K0, #fg_v{ p = P0, q = Q0}, Vs, {Fx0, Fy0,Fz0}) when is_float(
     ?MODULE:foldl(fun
 	({K1, _}, F) when K1 == K0 -> F;
 	({_, #fg_v{ p = P1, q = Q1}}, {Fx, Fy, Fz}) ->
-	    {R, {Cx, Cy,Cz}} = composition(P0, P1),
+	    {R, {Cx, Cy,Cz}} = ?MODULE:composition(P0, P1),
 	    F = ?fg_kc*(Q1*Q0)/(R*R+?fg_sqrt_eps),
 	    {Fx + Cx*F, Fy + Cy*F, Fz + Cz*F};
 	(_, F) -> F
@@ -183,7 +187,7 @@ coulomb_repulsion(K0, #fg_v{ p = P0, q = Q0}, Vs, {Fx0, Fy0}) when is_float(Fx0)
     ?MODULE:foldl(fun
 	({K1, _}, F) when K1 == K0 -> F;
 	({_, #fg_v{ p = P1, q = Q1}}, {Fx, Fy}) ->
-	    {R, {Cx, Cy}} = composition(P0, P1),
+	    {R, {Cx, Cy}} = ?MODULE:composition(P0, P1),
 	    F = ?fg_kc*(Q1*Q0)/(R*R+?fg_sqrt_eps),
 	    {Fx + Cx*F, Fy + Cy*F};
 	(_, F) -> F
@@ -195,7 +199,7 @@ hooke_attraction(Key0, #fg_v{ p = P0 }, Vs, Es, {Fx0, Fy0, Fz0}=F0) when is_floa
 	({{Key1,Key2}, #fg_e{ l = L, k = K}}, {Fx, Fy, Fz}) when Key1 =:= Key0->
 	    try
 	    #fg_v{ p = P1} = ?MODULE:get(Key2, Vs),
-	    {R, {Cx,Cy,Cz}} = composition(P0, P1),
+	    {R, {Cx,Cy,Cz}} = ?MODULE:composition(P0, P1),
 	    F = -K*?fg_stretch*(R - L),
 	    {Fx + Cx*F, Fy + Cy*F, Fz + Cz*F}
 	    catch
@@ -206,7 +210,7 @@ hooke_attraction(Key0, #fg_v{ p = P0 }, Vs, Es, {Fx0, Fy0, Fz0}=F0) when is_floa
 	({{Key2,Key1}, #fg_e{ l = L, k = K}}, {Fx, Fy, Fz}) when Key1 =:= Key0->
 	    try
 	    #fg_v{ p = P1} = ?MODULE:get(Key2, Vs),
-	    {R, {Cx,Cy,Cz}} = composition(P0, P1),
+	    {R, {Cx,Cy,Cz}} = ?MODULE:composition(P0, P1),
 	    F = -K*?fg_stretch*(R - L),
 	    {Fx + Cx*F, Fy + Cy*F, Fz + Cz*F}
 	    catch
@@ -222,7 +226,7 @@ hooke_attraction(Key0, #fg_v{ p = P0 }, Vs, Es, {Fx0, Fy0}) when is_float(Fx0), 
 	({{Key1,Key2}, #fg_e{ l = L, k = K}}, {Fx, Fy}) when Key1 =:= Key0->
 	    try
 	    #fg_v{ p = P1} = ?MODULE:get(Key2, Vs),
-	    {R, {Cx,Cy}} = composition(P0, P1),
+	    {R, {Cx,Cy}} = ?MODULE:composition(P0, P1),
 	    F = -K*?fg_stretch*(R - L),
 	    {Fx + Cx*F, Fy + Cy*F}
 	    catch
@@ -233,7 +237,7 @@ hooke_attraction(Key0, #fg_v{ p = P0 }, Vs, Es, {Fx0, Fy0}) when is_float(Fx0), 
 	({{Key2,Key1}, #fg_e{ l = L, k = K}}, {Fx, Fy}) when Key1 =:= Key0->
 	    try
 	    #fg_v{ p = P1} = ?MODULE:get(Key2, Vs),
-	    {R, {Cx,Cy}} = composition(P0, P1),
+	    {R, {Cx,Cy}} = ?MODULE:composition(P0, P1),
 	    F = -K*?fg_stretch*(R - L),
 	    {Fx + Cx*F, Fy + Cy*F}
 	    catch
@@ -269,3 +273,14 @@ qsqrt(X) ->
     Inv0 = Inv*(1.50 - (X2 * Inv * Inv)),
     % Inv1 = Inv0*(1.5 - (X2 * Inv0 * Inv0)),
     1/Inv0.
+
+load_provisual_nif() ->
+    case code:priv_dir(provisual) of
+        {error, bad_name} ->
+            SoName = filename:join("priv", provisual_drv);
+        Dir ->
+            SoName = filename:join(Dir, provisual_drv)
+    end,
+    erlang:load_nif(SoName, 0).
+
+
