@@ -9,10 +9,11 @@
 -export([
 	new/0,
 	vs/1,
-	set_vs/2,
+	step/1,
 	es/1,
+	messages/1,
 	toggle_edge/1,
-	graph_event/2
+	event/2
     ]).
 
 -include_lib("provisual_fgraph.hrl").
@@ -38,23 +39,34 @@ new() ->
 	    links = provisual_fgraph:new(),
 	    ancestors = provisual_fgraph:new()
 	},
-	events = []
+	events = gb_trees:empty()
     }.
 
-vs(#model{ vs = Vs}) -> 
-    Vs.
+step(#model{ events = Es, vs = Vs } = M) ->
+    M#model{ 
+	vs = provisual_fgraph:step(Vs, es(M), {0.0, 0.0, 0.0}),
+	events = decrease_events(Es)
+    }.
 
-set_vs(#model{} = M, Vs) ->
-    M#model{ vs = Vs }.
+
+vs(#model{ vs = Vs}) -> Vs.
 
 es(#model{ ces = links, es = #es{ links = Es}}) -> Es;
 es(#model{ ces = ancestors, es = #es{ ancestors = Es}}) -> Es.
+messages(#model{ events = Es}) -> gb_trees:to_list(Es).
 
 toggle_edge(#model{ ces = C} = M) -> 
     M#model{ ces = next_edge(C) }.
 
 next_edge(links) -> ancestors;
 next_edge(ancestors) -> links.
+
+decrease_events(Es) -> gb_trees:from_orddict(decrease_events(gb_trees:to_list(Es), [])).
+decrease_events([{_E,0}|Es], Os) ->
+    decrease_events(Es, Os);
+decrease_events([{E,I}|Es], Os) ->
+    decrease_events(Es, [{E,I-1}|Os]);
+decrease_events([], Os) -> Os.
 
 %% graph events
 
@@ -66,8 +78,8 @@ next_edge(ancestors) -> links.
 p1() -> float(random:uniform(160) - 80).
 p3() -> {p1(), p1(), p1()}.
 
-graph_event(clear, _) -> provisual_model:new();
-graph_event({add_node, Id, Name}, #model{ vs = Vs0} = M) ->
+event(clear, _) -> provisual_model:new();
+event({add_node, Id, Name}, #model{ vs = Vs0} = M) ->
     Vs1 = provisual_fgraph:add(Id, #fg_v{
 	    p = p3(),
 	    v = {0.0,0.0,0.0},
@@ -77,9 +89,14 @@ graph_event({add_node, Id, Name}, #model{ vs = Vs0} = M) ->
 	    name = Name}, Vs0),
     M#model{vs = Vs1};
 
-graph_event({del_node, Id}, #model{ vs = Vs, es = #es{ links = Ls, ancestors = As} = Es} = M) ->
+event({del_node, Id}, #model{ events = Events, vs = Vs, es = #es{ links = Ls, ancestors = As} = Es} = M) ->
     M#model{ 
 	vs = provisual_fgraph:del(Id, Vs),
+	events = lists:foldl(fun
+		    ({{DId,_},_}, O) when DId =:= Id -> O;
+		    ({{_,DId},_}, O) when DId =:= Id -> O;
+		    ({Event,I}, O) -> gb_trees:enter(Event,I,O)
+		end, gb_trees:empty(), gb_trees:to_list(Events)),
 	es = Es#es{
 	    links = provisual_fgraph:foldl(fun
 		    ({{DId,_},_}, O) when DId =:= Id -> O;
@@ -94,7 +111,7 @@ graph_event({del_node, Id}, #model{ vs = Vs, es = #es{ links = Ls, ancestors = A
 	}
     };
 
-graph_event({add_edge, E, ancestors}, #model{ es = #es{ ancestors = Ls} = Es } = M) ->
+event({add_edge, E, ancestors}, #model{ es = #es{ ancestors = Ls} = Es } = M) ->
     M#model{ 
 	es = Es#es{
 	    ancestors = provisual_fgraph:add(E, #fg_e{ 
@@ -104,7 +121,7 @@ graph_event({add_edge, E, ancestors}, #model{ es = #es{ ancestors = Ls} = Es } =
 	}
     };
 
-graph_event({add_edge, E, links}, #model{ es = #es{ links = Ls} = Es } = M) ->
+event({add_edge, E, links}, #model{ es = #es{ links = Ls} = Es } = M) ->
     M#model{ 
 	es = Es#es{
 	    links = provisual_fgraph:add(E, #fg_e{ 
@@ -113,6 +130,9 @@ graph_event({add_edge, E, links}, #model{ es = #es{ links = Ls} = Es } = M) ->
 		}, Ls)
 	}
     };
-graph_event(Other, M) ->
+event({add_event, E, _T}, #model{ events = Events } = M) ->
+    M#model{ events = gb_trees:enter(E,100,Events) };
+
+event(Other, M) ->
     io:format("Unhandled graph event ~p ~n", [Other]),
     M.

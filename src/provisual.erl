@@ -152,8 +152,10 @@ loop(#s{ frame=F, model = M,
     %% Setup camera and light
     load_matrices(Cam),
 
+    % draw edges (links|ancestry)
     gl:lineWidth(1.0),
     gl:color3f(1.0,1.0,1.0),
+
     provisual_fgraph:foreach(fun
 	    ({{K1,K2}, _}) ->
 		#fg_v{p={X1,Y1,Z1}} = provisual_fgraph:get(K1, provisual_model:vs(M)),
@@ -164,6 +166,19 @@ loop(#s{ frame=F, model = M,
 		    ]),
 		gl:'end'()
 	end, provisual_model:es(M)),
+    % draw edges (messages)
+    gl:color3f(0.0,0.3,1.0),
+    lists:foreach(fun({{K1,K2},I}) ->
+		gl:lineWidth(8.0*(I/100)),
+		#fg_v{p={X1,Y1,Z1}} = provisual_fgraph:get(K1, provisual_model:vs(M)),
+		#fg_v{p={X2,Y2,Z2}} = provisual_fgraph:get(K2, provisual_model:vs(M)),
+		gl:'begin'(?GL_LINES),
+		draw_lines([
+			{X1, Z1, Y1},{X2, Z2, Y2}
+		    ]),
+		gl:'end'()
+	end, provisual_model:messages(M)),
+
     gl:color3f(1.0,0.0,0.4),
     provisual_fgraph:foreach(fun
 	    ({_Key, #fg_v{ p ={X, Y, Z}}}) ->
@@ -271,17 +286,13 @@ handle_msg(#wx{event=#wxSize{size={W,H}}}, #s{ camera = Cam0}= S) ->
     gl:viewport(0,0,W,H),
     S#s{camera = Cam0#camera{ww=W,wh=H}};
 
-handle_msg({Pid, force_step}, #s{ model = M } = S) ->
-    Vs1 = provisual_fgraph:step(
-	provisual_model:vs(M),
-	provisual_model:es(M),
-	{0.0, 0.0, 0.0}
-    ),
+handle_msg({Pid, force_step}, #s{ model = M0 } = S) ->
+    M1 = provisual_model:step(M0),
     Pid ! {self(), ok},
-    S#s{ model = provisual_model:set_vs(M, Vs1) };
+    S#s{ model = M1 };
 
 handle_msg({graph, Cmd},#s{ model = M} = S) ->
-    S#s{ model = provisual_model:graph_event(Cmd, M) };
+    S#s{ model = provisual_model:event(Cmd, M) };
 
 handle_msg(#wx{ id=Id, event = #wxCommand{type = command_menu_selected}}, S) ->
     io:format("wx Id = ~p~n", [Id]),
@@ -455,6 +466,7 @@ clear(G) ->
     ok.
 
 add_event(G, E, Type) ->
+    G ! {graph, {add_event, E, Type}},
     ok.
 
 
