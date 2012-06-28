@@ -94,7 +94,7 @@ loop(#tstate{ graph = Graph, n = N} = S) ->
 	     loop(S#tstate{ procs = gb_trees:delete(Pid, S#tstate.procs)});
 	{trace, Pid, spawn, Pid2, MFAs} ->
 	     provisual:add_node(Graph, Pid2, {250, 10, 10}, mfa2name(MFAs)),
-	     provisual:add_link(Graph, {Pid, Pid2}, ancestry),
+	     provisual:add_link(Graph, {Pid, Pid2}, ancestors),
 	     loop(S#tstate{ procs = gb_trees:enter(Pid2, ok, S#tstate.procs)});
 	
 	 % linkage
@@ -103,10 +103,10 @@ loop(#tstate{ graph = Graph, n = N} = S) ->
 	{trace, _Pid, getting_linked, _Pid2} ->
 	     loop(S);
 	{trace, Pid, link, Pid2} ->
-	     provisual:add_link(Graph, {Pid, Pid2}, link),
+	     provisual:add_link(Graph, {Pid, Pid2}, links),
 	     loop(S);
 	{trace, Pid, unlink, Pid2} ->
-	     provisual:del_link(Graph, {Pid, Pid2}, link),
+	     provisual:del_link(Graph, {Pid, Pid2}, links),
 	     loop(S);
 
 	 % msgs
@@ -204,7 +204,7 @@ apps(Graph, [], Parents, Registry, Procs, AllLinks) ->
     	({P1, P2}) ->
 	    case gb_trees:is_defined(P1, Procs) of
 	    	true ->
-		    provisual:add_link(Graph, {P1, P2}, ancestry),
+		    provisual:add_link(Graph, {P1, P2}, ancestors),
 		    ok;
 		_ ->
 		    ok
@@ -217,7 +217,7 @@ apps(Graph, [], Parents, Registry, Procs, AllLinks) ->
 	    	    case gb_trees:is_defined(Link, Procs) of
 		        true ->
 			    % io:format("link ~p~n", [Link]),
-			    provisual:add_link(Graph, {Pid, Link}, link);
+			    provisual:add_link(Graph, {Pid, Link}, links);
 			false ->
 			    ok
 		    end;

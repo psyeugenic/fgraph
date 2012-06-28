@@ -38,23 +38,24 @@
 -define(SHADOW_MENU,  201).
 
 
--record(cam,
-	{origin,
-	 distance,     % From origo.
-	 azimuth,
-	 elevation,
-	 pan_x,	       % Panning in X direction.
-	 pan_y,	       % Panning in Y direction.
-	 fov,	       % Field of view.
-	 hither,       % Near clipping plane.
-	 yon,	       % Far clipping plane.
-	 xs,           % Prev position
-	 ys,
-	 %% Not camera but needed
-	 ww,
-	 wh,
-	 ortho=false
-	}).
+-record(camera, {
+	origin,
+	distance,     % From origo.
+	azimuth,
+	elevation,
+	pan_x,	       % Panning in X direction.
+	pan_y,	       % Panning in Y direction.
+	fov,	       % Field of view.
+	hither,       % Near clipping plane.
+	yon,	       % Far clipping plane.
+	xs,           % Prev position
+	ys,
+	%% Not camera but needed
+	ww,
+	wh,
+	ortho=false
+    }).
+
 
 -record(s,  {
 	frame, 
@@ -62,10 +63,8 @@
 	rstate, 
 	font, 
 	time, 
-	cam, 
-	vs, 
-	es, 
-	es2, 
+	camera, 
+	model,
 	sphere,
 	tracer
     }).
@@ -73,11 +72,12 @@
 -record(rs, {mat_shader = false, shadows = false}).
 
 -record(time, {
-	fps=0,      % frames per second
-	fc=0,       % frame counter
-	diff=0,     % Time last frame in ms
+	fps = 0,      % frames per second
+	fc = 0,       % frame counter
+	diff = 0,     % Time last frame in ms
 	start =erlang:now(),
-	fcst  =erlang:now()}).  % frame counter start time
+	fcst  =erlang:now() % frame counter start time
+    }). 
 
 
 start() -> spawn(fun() -> init() end).
@@ -140,18 +140,15 @@ init() ->
     _Ticker = provisual_ticker:start(Me),
     loop(#s{
 	    frame=Frame, canvas=Canvas, font=DefFont, 
-	    rstate = #rs{}, time=#time{}, cam=camera_init(?W,?H), 
-	    vs  = provisual_fgraph:new(),
-	    es  = provisual_fgraph:new(),
-	    es2 = provisual_fgraph:new(),
+	    rstate = #rs{}, time=#time{}, camera = camera_init(?W,?H), 
+	    model = provisual_model:new(),
 	    sphere = load_sphere()
 	}).
 
-
 loop(quit) -> ok;
-loop(#s{frame=F, es = Es, vs = Vs, 
+loop(#s{ frame=F, model = M,
 	sphere = Sphere,canvas=Canvas,
-	cam=Cam,time=T,font=_F} = S) ->
+	camera=Cam,time=T} = S) ->
     %% Setup camera and light
     load_matrices(Cam),
 
@@ -159,14 +156,14 @@ loop(#s{frame=F, es = Es, vs = Vs,
     gl:color3f(1.0,1.0,1.0),
     provisual_fgraph:foreach(fun
 	    ({{K1,K2}, _}) ->
-		#fg_v{p={X1,Y1,Z1}} = provisual_fgraph:get(K1, Vs),
-		#fg_v{p={X2,Y2,Z2}} = provisual_fgraph:get(K2, Vs),
+		#fg_v{p={X1,Y1,Z1}} = provisual_fgraph:get(K1, provisual_model:vs(M)),
+		#fg_v{p={X2,Y2,Z2}} = provisual_fgraph:get(K2, provisual_model:vs(M)),
 		gl:'begin'(?GL_LINES),
 		draw_lines([
-			{ X1, Z1, Y1},{X2, Z2, Y2}
+			{X1, Z1, Y1},{X2, Z2, Y2}
 		    ]),
 		gl:'end'()
-	end, Es),
+	end, provisual_model:es(M)),
     gl:color3f(1.0,0.0,0.4),
     provisual_fgraph:foreach(fun
 	    ({_Key, #fg_v{ p ={X, Y, Z}}}) ->
@@ -174,7 +171,7 @@ loop(#s{frame=F, es = Es, vs = Vs,
 		gl:translatef(X,Z,Y),
 		Sphere(),
 		gl:popMatrix()
-	end, Vs),
+	end, provisual_model:vs(M)),
 
     %% Everything is drawn, show it.
     wxGLCanvas:swapBuffers(Canvas),
@@ -192,7 +189,14 @@ loop(#s{frame=F, es = Es, vs = Vs,
 
 handle_events(S) ->
     receive
-        Msg -> handle_msg(Msg, S)
+        Msg -> 
+	    try
+		handle_msg(Msg, S)
+	    catch
+		C:E ->
+		    io:format("WTF ~p:~p~n~n~p~n", [C,E,erlang:get_stacktrace()]),
+		    erlang:exit(badarg)
+	    end
     after 0 -> S
     end.
 
@@ -256,25 +260,28 @@ handle_msg(#wx{ id = ?view_links, event = #wxCommand{type = command_menu_selecte
 handle_msg(#wx{ id = ?view_ancestry, event = #wxCommand{type = command_menu_selected}}, #s{ } = S) ->
     S;
 
-handle_msg( #wx{event=#wxMouse{ type = right_down}}, S) ->
-    S#s{ es = S#s.es2, es2 = S#s.es };
+handle_msg( #wx{event=#wxMouse{ type = right_down}}, #s{ model = M} = S) ->
+    S#s{ model = provisual_model:toggle_edge(M) };
 
-handle_msg( #wx{event=Mouse=#wxMouse{}}, #s{ cam = Cam0}= S) ->
+handle_msg( #wx{event=Mouse=#wxMouse{}}, #s{ camera = Cam0}= S) ->
     {_, Cam} = cam_event(Mouse,Cam0),
-    S#s{cam=Cam};
+    S#s{ camera = Cam};
 
-handle_msg(#wx{event=#wxSize{size={W,H}}}, #s{ cam = Cam0}= S) ->
+handle_msg(#wx{event=#wxSize{size={W,H}}}, #s{ camera = Cam0}= S) ->
     gl:viewport(0,0,W,H),
-    S#s{cam=Cam0#cam{ww=W,wh=H}};
+    S#s{camera = Cam0#camera{ww=W,wh=H}};
 
-handle_msg({Pid, force_step}, S) ->
-    Vs  = S#s.vs,
-    Vs1 = provisual_fgraph:step(Vs, S#s.es, {0.0, 0.0, 0.0}),
+handle_msg({Pid, force_step}, #s{ model = M } = S) ->
+    Vs1 = provisual_fgraph:step(
+	provisual_model:vs(M),
+	provisual_model:es(M),
+	{0.0, 0.0, 0.0}
+    ),
     Pid ! {self(), ok},
-    S#s{ vs = Vs1};
+    S#s{ model = provisual_model:set_vs(M, Vs1) };
 
-handle_msg({graph, Cmd}, S) ->
-    graph_event(Cmd, S);
+handle_msg({graph, Cmd},#s{ model = M} = S) ->
+    S#s{ model = provisual_model:graph_event(Cmd, M) };
 
 handle_msg(#wx{ id=Id, event = #wxCommand{type = command_menu_selected}}, S) ->
     io:format("wx Id = ~p~n", [Id]),
@@ -283,80 +290,34 @@ handle_msg(Other, S) ->
     io:format("Got ~p ~n",[Other]),
     S.
 
-graph_event(clear, S) -> 
-    S#s{ vs = provisual_fgraph:new(), es = provisual_fgraph:new(), es2 = provisual_fgraph:new()};
-graph_event({add_node, Id, Name}, #s{ vs = Vs0} = S) ->
-    Q  = 20.0,   % repulsive force
-    M  = 0.5,    % mass
-    Vs1 = provisual_fgraph:add(Id, #fg_v{
-	    p = p3(),
-	    v = {0.0,0.0,0.0},
-	    m = M,
-	    q = Q,
-	    color = undefined,
-	    name = Name}, Vs0),
-    S#s{vs = Vs1};
-graph_event({del_node, Id}, #s{ vs = Vs0, es = Ls0, es2 = As0} = S) ->
-    Vs1 = provisual_fgraph:del(Id, Vs0),
-    Ls1 = provisual_fgraph:foldl(fun
-	    ({{DId,_},_}, O) when DId =:= Id -> O;
-	    ({{_,DId},_}, O) when DId =:= Id -> O;
-	    ({K,V}, O) -> provisual_fgraph:add(K,V,O)
-	end, provisual_fgraph:new(), Ls0),
-
-    As1 = provisual_fgraph:foldl(fun
-	    ({{DId,_},_}, O) when DId =:= Id -> O;
-	    ({{_,DId},_}, O) when DId =:= Id -> O;
-	    ({K,V}, O) -> provisual_fgraph:add(K,V,O)
-	end, provisual_fgraph:new(), As0),
-    S#s{ vs = Vs1, es = Ls1, es2 = As1 };
-
-graph_event({add_edge, E, link}, #s{ es = Ls0 } = S) ->
-    K   = 30.0,   % attractive force 
-    L   =  5.0,   % spring length
-    S#s{ es = provisual_fgraph:add(E, #fg_e{ k = K, l = L}, Ls0) };
-
-graph_event({add_edge, E, ancestry}, #s{ es2 = Ls0 } = S) ->
-    K   = 30.0,   % attractive force 
-    L   =  5.0,   % spring length
-    S#s{ es2 = provisual_fgraph:add(E, #fg_e{ k = K, l = L}, Ls0) };
-	
-
-
-
-graph_event(Other, S) ->
-    io:format("Unhandled graph event ~p ~n", [Other]),
-    S.
-
-
 cam_event(#wxMouse{type=motion, leftDown=false},Cam) ->
     {[], Cam};
-cam_event(#wxMouse{type=mousewheel, wheelRotation=Rot},Cam=#cam{distance=Dist}) ->
+cam_event(#wxMouse{type=mousewheel, wheelRotation=Rot},Cam=#camera{distance=Dist}) ->
     case Rot > 0 of
-	true ->  {[],Cam#cam{distance=Dist+10}};
-	false -> {[],Cam#cam{distance=Dist-10}}
+	true ->  {[],Cam#camera{distance=Dist+10}};
+	false -> {[],Cam#camera{distance=Dist-10}}
     end;
 cam_event(#wxMouse{type=motion, leftDown=true,shiftDown=true,x=X,y=Y},
-	  Cam=#cam{pan_x=PanX0,pan_y=PanY0,distance=D,xs=Xs,ys=Ys}) ->
+	  Cam=#camera{pan_x=PanX0,pan_y=PanY0,distance=D,xs=Xs,ys=Ys}) ->
     %% PAN
     S = D*(1/20)/(101-float(?PAN_SPEED)),
     Dx = (X-Xs)*S,
     Dy = (Y-Ys)*S,
     PanX = PanX0 + Dx,
     PanY = PanY0 - Dy,
-    {[],Cam#cam{pan_x=PanX,pan_y=PanY,xs=X,ys=Y}};
+    {[],Cam#camera{pan_x=PanX,pan_y=PanY,xs=X,ys=Y}};
 cam_event(#wxMouse{type=motion, leftDown=true,controlDown=true,x=X, y=Y},
-	  Cam=#cam{distance=Dist, ys=Ys}) ->
+	  Cam=#camera{distance=Dist, ys=Ys}) ->
     %% ZOOM (Dy)
-    {[],Cam#cam{distance=Dist+(Y-Ys)/10,xs=X,ys=Y}};
+    {[],Cam#camera{distance=Dist+(Y-Ys)/10,xs=X,ys=Y}};
 cam_event(#wxMouse{type=motion, leftDown=true,x=X,y=Y},
-	  Cam=#cam{azimuth=Az0,elevation=El0,xs=Xs,ys=Ys}) ->
+	  Cam=#camera{azimuth=Az0,elevation=El0,xs=Xs,ys=Ys}) ->
     %% Rotate
     Az = Az0 + (X-Xs),
     El = El0 + (Y-Ys),
-    {[], Cam#cam{azimuth=Az,elevation=El, xs=X,ys=Y}};
+    {[], Cam#camera{azimuth=Az,elevation=El, xs=X,ys=Y}};
 cam_event(#wxMouse{type=left_down, x=X,y=Y},Cam) ->
-    {[],Cam#cam{xs=X,ys=Y}};
+    {[],Cam#camera{xs=X,ys=Y}};
 cam_event(Ev,Cam) ->
     {Ev,Cam}.
 
@@ -423,8 +384,11 @@ load_matrices(Cam,IncludeLights) ->
     projection(Cam),
     modelview(Cam, IncludeLights).
 
-projection(#cam{distance=D,fov=Fov,hither=Hither,yon=Yon,
-		ww=W,wh=H,ortho=Ortho}) ->
+projection(#camera{
+	distance=D,
+	fov=Fov,
+	hither=Hither,
+	yon=Yon, ww=W,wh=H,ortho=Ortho}) -> 
     Aspect = W/H,
     case Ortho of
 	false ->
@@ -434,7 +398,7 @@ projection(#cam{distance=D,fov=Fov,hither=Hither,yon=Yon,
 	    gl:ortho(-Sz*Aspect, Sz*Aspect, -Sz, Sz, Hither, Yon)
     end.
 
-modelview(#cam{origin=Origin,distance=Dist,azimuth=Az,
+modelview(#camera{origin=Origin,distance=Dist,azimuth=Az,
 	       elevation=El,pan_x=PanX,pan_y=PanY}, Lights) ->
     gl:matrixMode(?GL_MODELVIEW),
     gl:loadIdentity(),
@@ -452,16 +416,19 @@ modelview(#cam{origin=Origin,distance=Dist,azimuth=Az,
 
 %%%%%%%%%%%% Camera
 
-camera_init(W,H) ->
-    #cam{origin={0.0,0.0,0.0},
-	 azimuth=-45.0,elevation=25.0,
-	 distance=1350,
-	 pan_x=0.0,pan_y=-2.0,
-	 fov=45.0,
-	 hither=0.1,
-	 yon=10000.0,
-	 ww=W,
-	 wh=H}.
+camera_init(W,H) -> #camera{
+	origin = {0.0, 0.0, 0.0},
+	azimuth = -45.0,
+	elevation = 25.0,
+	distance = 1350,
+	pan_x =  0.0,
+	pan_y = -2.0,
+	fov = 45.0,
+	hither = 0.1,
+	yon = 10000.0,
+	ww = W,
+	wh = H
+    }.
 	 
 %%%%%%%%%
 
@@ -493,6 +460,3 @@ add_event(G, E, Type) ->
 
 %%
 
-
-p1() -> float(random:uniform(160) - 80).
-p3() -> {p1(), p1(), p1()}.
