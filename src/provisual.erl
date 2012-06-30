@@ -66,6 +66,7 @@
 	camera, 
 	model,
 	sphere,
+	edges,
 	tracer
     }).
 
@@ -142,32 +143,27 @@ init() ->
 	    frame=Frame, canvas=Canvas, font=DefFont, 
 	    rstate = #rs{}, time=#time{}, camera = camera_init(?W,?H), 
 	    model = provisual_model:new(),
-	    sphere = load_sphere()
+	    sphere = load_sphere(),
+	    edges = fun() -> ok end
 	}).
 
 loop(quit) -> ok;
 loop(#s{ frame=F, model = M,
-	sphere = Sphere,canvas=Canvas,
-	camera=Cam,time=T} = S) ->
+	sphere = Sphere,
+	edges = Edges,
+	canvas = Canvas,
+	camera = Cam, time=T} = S) ->
     %% Setup camera and light
     load_matrices(Cam),
 
     % draw edges (links|ancestry)
     gl:lineWidth(1.0),
     gl:color3f(1.0,1.0,1.0),
+    Edges(),
 
-    provisual_fgraph:foreach(fun
-	    ({{K1,K2}, _}) ->
-		#fg_v{p={X1,Y1,Z1}} = provisual_fgraph:get(K1, provisual_model:vs(M)),
-		#fg_v{p={X2,Y2,Z2}} = provisual_fgraph:get(K2, provisual_model:vs(M)),
-		gl:'begin'(?GL_LINES),
-		draw_lines([
-			{X1, Z1, Y1},{X2, Z2, Y2}
-		    ]),
-		gl:'end'()
-	end, provisual_model:es(M)),
     % draw edges (messages)
     gl:color3f(0.0,0.3,1.0),
+
     lists:foreach(fun({{K1,K2},I}) ->
 		gl:lineWidth(8.0*(I/100)),
 		#fg_v{p={X1,Y1,Z1}} = provisual_fgraph:get(K1, provisual_model:vs(M)),
@@ -288,11 +284,13 @@ handle_msg(#wx{event=#wxSize{size={W,H}}}, #s{ camera = Cam0}= S) ->
 
 handle_msg({Pid, force_step}, #s{ model = M0 } = S) ->
     M1 = provisual_model:step(M0),
+    Lines = model_to_line_binary(M1),
     Pid ! {self(), ok},
-    S#s{ model = M1 };
+    S#s{ model = M1, edges = Lines };
 
 handle_msg({graph, Cmd},#s{ model = M} = S) ->
-    S#s{ model = provisual_model:event(Cmd, M) };
+    % try to eat as many graph msgs as we can
+    handle_events(S#s{ model = provisual_model:event(Cmd, M) });
 
 handle_msg(#wx{ id=Id, event = #wxCommand{type = command_menu_selected}}, S) ->
     io:format("wx Id = ~p~n", [Id]),
@@ -339,6 +337,32 @@ draw_lines([{X1,Y1,Z1},{X2,Y2,Z2}|Pts]) ->
      draw_lines(Pts);
 draw_lines([]) -> ok.
 
+
+-define(F32, 32/float-native).
+
+model_to_line_binary(M) -> 
+    {Size, Data} = model_to_line_binary(provisual_model:vs(M), provisual_model:es(M)),
+    [Buff] = gl:genBuffers(1),
+    gl:bindBuffer(?GL_ARRAY_BUFFER,Buff),
+    gl:bufferData(?GL_ARRAY_BUFFER, size(Data), Data, ?GL_STATIC_DRAW),
+     fun() ->
+             %% Draw buffer
+             gl:bindBuffer(?GL_ARRAY_BUFFER,Buff),
+             gl:vertexPointer(3, ?GL_FLOAT, 0, 0),
+             gl:enableClientState(?GL_VERTEX_ARRAY),
+             gl:drawArrays(?GL_LINES, 0, Size*3),
+             gl:bindBuffer(?GL_ARRAY_BUFFER, 0),
+             gl:disableClientState(?GL_VERTEX_ARRAY)
+     end.
+
+model_to_line_binary(Vs, Es) ->
+    provisual_fgraph:foldl(fun
+	    ({{K1,K2},_},{Size, Bin}) ->
+		    #fg_v{p={X1,Y1,Z1}} = provisual_fgraph:get(K1, Vs),
+		    #fg_v{p={X2,Y2,Z2}} = provisual_fgraph:get(K2, Vs),
+		    {Size + 2, <<Bin/binary, X1:?F32, Z1:?F32, Y1:?F32 , X2:?F32, Z2:?F32, Y2:?F32>>}
+	    end, {0, <<>>}, Es).
+
 load_sphere() ->
     {Size, DataChunk, [Ns]} =
 	provisual_sphere:tris([{subd,4}, {ccw,false}, {binary,true},  {scale,4}, {normals,true}]),
@@ -348,12 +372,6 @@ load_sphere() ->
     [Buff] = gl:genBuffers(1),
     gl:bindBuffer(?GL_ARRAY_BUFFER,Buff),
     gl:bufferData(?GL_ARRAY_BUFFER, size(Data), Data, ?GL_STATIC_DRAW),
-
-    %% Setup color and texture
-    gl:color4fv({1.0,1.0,1.0,1.0}),
-
-    %% Setup draw buffers
-    gl:bindBuffer(?GL_ARRAY_BUFFER,Buff),
 
      fun() ->
              %% Draw buffer
@@ -468,7 +486,3 @@ clear(G) ->
 add_event(G, E, Type) ->
     G ! {graph, {add_event, E, Type}},
     ok.
-
-
-%%
-
