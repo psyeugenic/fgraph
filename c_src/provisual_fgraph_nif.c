@@ -9,30 +9,12 @@
 #include "erl_nif.h"
 #include <stdio.h>
 
-/* useful atoms */
-static ERL_NIF_TERM am_error;
-static ERL_NIF_TERM am_ok;
-
-static void init(ErlNifEnv *env) {
-    /* useful atoms */
-    am_error      = enif_make_atom(env, "error");
-    am_ok         = enif_make_atom(env, "ok");
-
-}
-
-static ERL_NIF_TERM composition(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
-    const ERL_NIF_TERM *v1, *v0;
-    int arity = 0;
+static ERL_NIF_TERM composition3d(ErlNifEnv *env, const ERL_NIF_TERM *v1, const ERL_NIF_TERM *v0) {
     double v1x, v1y, v1z, v0x, v0y, v0z;
     float dx,dy,dz;
     long i;
     float x2, y, number, r;
     const float threehalfs = 1.5F;
-
-    if (!enif_get_tuple(env, argv[0], &arity, &v1) && arity != 3)
-	return enif_make_badarg(env);
-    if (!enif_get_tuple(env, argv[1], &arity, &v0) && arity != 3)
-	return enif_make_badarg(env);
 
     if (    !enif_get_double(env, v1[0], &v1x) ||
 	    !enif_get_double(env, v1[1], &v1y) ||
@@ -68,6 +50,57 @@ static ERL_NIF_TERM composition(ErlNifEnv *env, int argc, const ERL_NIF_TERM arg
 	    );
 }
 
+static ERL_NIF_TERM composition2d(ErlNifEnv *env, const ERL_NIF_TERM *v1, const ERL_NIF_TERM *v0) {
+    double v1x, v1y, v0x, v0y;
+    float dx,dy;
+    long i;
+    float x2, y, number, r;
+    const float threehalfs = 1.5F;
+
+    if (    !enif_get_double(env, v1[0], &v1x) ||
+	    !enif_get_double(env, v1[1], &v1y) ||
+
+	    !enif_get_double(env, v0[0], &v0x) ||
+	    !enif_get_double(env, v0[1], &v0y)) {
+	return enif_make_badarg(env);
+    }
+
+    dx = v1x - v0x;
+    dy = v1y - v0y;
+
+    number = dx*dx + dy*dy + 0.0005f;
+
+    x2 = number * 0.5F;
+    y  = number;
+    i  = * ( long * ) &y;
+    i  = 0x5f3759df - ( i >> 1 );
+    y  = * ( float * ) &i;
+    y  = y * ( threehalfs - ( x2 * y * y ) );
+
+    r = 1/y;
+
+    return enif_make_tuple2(env, enif_make_double(env, r),
+	    enif_make_tuple2(env, 
+		enif_make_double(env, dx/r),
+		enif_make_double(env, dy/r)
+		)
+	    );
+
+    return enif_make_badarg(env);
+}
+
+static ERL_NIF_TERM composition(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+    const ERL_NIF_TERM *v1, *v0;
+    int a0 = 0, a1 = 0;
+
+    if (enif_get_tuple(env, argv[0], &a1, &v1) && enif_get_tuple(env, argv[1], &a0, &v0)) {
+	if (a1 == 3 && a1 == 3) return composition3d(env, v1, v0);
+	else if (a1 == 2 && a1 == 2) return composition2d(env, v1, v0);
+    }
+
+    return enif_make_badarg(env);
+}
+
 
 static ErlNifFunc nif_functions[] = {
     {"composition", 2, composition},
@@ -75,8 +108,6 @@ static ErlNifFunc nif_functions[] = {
 
 static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
 {
-    init(env);
-
     *priv_data = NULL;
     return 0;
 }
