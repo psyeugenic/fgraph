@@ -143,7 +143,7 @@ init() ->
 	    frame=Frame, canvas=Canvas, font=DefFont, 
 	    rstate = #rs{}, time=#time{}, camera = camera_init(?W,?H), 
 	    model = provisual_model:new(),
-	    sphere = load_sphere(),
+	    sphere = load_sphere(5),
 	    edges = fun() -> ok end
 	}).
 
@@ -194,7 +194,6 @@ loop(#s{ frame=F, model = M,
     %% Sync command queue, so we don't choke the driver and get no events
     _ = wxWindow:getSize(F),
     loop(Ns).
-
 
 %%%% message handling
 
@@ -363,9 +362,9 @@ model_to_line_binary(Vs, Es) ->
 		    {Size + 2, <<Bin/binary, X1:?F32, Z1:?F32, Y1:?F32 , X2:?F32, Z2:?F32, Y2:?F32>>}
 	    end, {0, <<>>}, Es).
 
-load_sphere() ->
+load_sphere(Scale) ->
     {Size, DataChunk, [Ns]} =
-	provisual_sphere:tris([{subd,4}, {ccw,false}, {binary,true},  {scale,4}, {normals,true}]),
+	provisual_sphere:tris([{subd,4}, {ccw,false}, {binary,true},  {scale,Scale}, {normals,true}]),
     StartNormals = size(DataChunk),
     Data = <<DataChunk/binary, Ns/binary>>,
 
