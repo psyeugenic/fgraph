@@ -72,8 +72,8 @@ decrease_events([], Os) -> Os.
 
 -define(fg_q, 20.0).
 -define(fg_m, 0.5).
--define(fg_k, 30.0). % attractive force 
--define(fg_l, 5.0).  % spring length
+-define(fg_k, 35.0). % attractive force 
+-define(fg_l, 3.0).  % spring length
 
 p1() -> float(random:uniform(160) - 80).
 p3() -> {p1(), p1(), p1()}.
