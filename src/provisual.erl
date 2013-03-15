@@ -5,7 +5,9 @@
 %% Created: 2012-06-15
 
 -module(provisual).
--export([start/0]).
+-export([
+	start/0
+    ]).
 
 -export([
 	add_node/4,
@@ -48,8 +50,8 @@
 	fov,	       % Field of view.
 	hither,       % Near clipping plane.
 	yon,	       % Far clipping plane.
-	xs,           % Prev position
-	ys,
+	xs = 0,           % Prev position
+	ys = 0,
 	%% Not camera but needed
 	ww,
 	wh,
